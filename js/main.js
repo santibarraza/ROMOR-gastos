@@ -45,6 +45,16 @@
     $("login-btn").disabled = true;
     $("login-btn").textContent = "Entrando...";
     try {
+      if (
+        !window.APP_CONFIG.SUPABASE_URL ||
+        window.APP_CONFIG.SUPABASE_URL.includes("TU-PROYECTO") ||
+        !window.APP_CONFIG.SUPABASE_ANON_KEY ||
+        window.APP_CONFIG.SUPABASE_ANON_KEY.includes("TU-ANON-KEY")
+      ) {
+        throw new Error(
+          "Falta configurar js/config.js con la URL y la llave anon de tu proyecto Supabase (todavía tiene los valores de ejemplo)."
+        );
+      }
       const { error } = await sb.auth.signInWithPassword({
         email: window.APP_CONFIG.SHARED_LOGIN_EMAIL,
         password: $("login-password").value,
@@ -52,8 +62,22 @@
       if (error) throw error;
       await afterLogin();
     } catch (err) {
-      $("login-error").textContent = "Contraseña incorrecta. Intenta de nuevo.";
+      // Mostramos el motivo real (Supabase ya lo devuelve en español-friendly
+      // la mayoría de las veces en inglés, pero es más útil que un mensaje genérico)
+      let msg = err.message || "No se pudo iniciar sesión.";
+      if (/invalid login credentials/i.test(msg)) {
+        msg =
+          "Contraseña incorrecta, o el usuario equipo@romor-obra.local no existe / no coincide con SHARED_LOGIN_EMAIL en config.js.";
+      } else if (/email not confirmed/i.test(msg)) {
+        msg =
+          'El usuario existe pero no está confirmado. En Supabase → Authentication → Users, edita el usuario y activa "Auto Confirm User" (o bórralo y créalo de nuevo con esa casilla activada).';
+      } else if (/failed to fetch/i.test(msg)) {
+        msg =
+          "No se pudo conectar con Supabase. Revisa que SUPABASE_URL en config.js sea exactamente tu Project URL (https://xxxx.supabase.co).";
+      }
+      $("login-error").textContent = msg;
       $("login-error").classList.remove("hidden");
+      console.error("Error de login:", err);
     } finally {
       $("login-btn").disabled = false;
       $("login-btn").textContent = "Entrar";

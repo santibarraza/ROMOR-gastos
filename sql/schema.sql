@@ -33,6 +33,15 @@ create table if not exists categorias (
 );
 
 -- -------------------------------------------------------------
+-- Tabla: proyectos (puedes tener varios proyectos/obras)
+-- -------------------------------------------------------------
+create table if not exists proyectos (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null unique,
+  created_at timestamptz not null default now()
+);
+
+-- -------------------------------------------------------------
 -- Tabla: proveedores
 -- -------------------------------------------------------------
 create table if not exists proveedores (
@@ -44,7 +53,8 @@ create table if not exists proveedores (
   correo text,
   ciudad text,
   notas text,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  unique (categoria_id, nombre_empresa)
 );
 
 -- -------------------------------------------------------------
@@ -52,6 +62,7 @@ create table if not exists proveedores (
 -- -------------------------------------------------------------
 create table if not exists gastos (
   id uuid primary key default gen_random_uuid(),
+  proyecto_id uuid references proyectos(id) on delete cascade,
   fecha date not null default current_date,
   monto numeric(12,2) not null check (monto > 0),
   categoria_id uuid references categorias(id) on delete set null,
@@ -70,6 +81,25 @@ create table if not exists gastos (
 
 create index if not exists idx_gastos_categoria on gastos(categoria_id);
 create index if not exists idx_gastos_fecha on gastos(fecha);
+create index if not exists idx_gastos_proyecto on gastos(proyecto_id);
+
+-- -------------------------------------------------------------
+-- Tabla: entradas (dinero que entra al proyecto: aportaciones, ingresos)
+-- -------------------------------------------------------------
+create table if not exists entradas (
+  id uuid primary key default gen_random_uuid(),
+  proyecto_id uuid references proyectos(id) on delete cascade,
+  fecha date not null default current_date,
+  monto numeric(12,2) not null check (monto > 0),
+  concepto text,
+  aportado_por text,
+  capturado_por text,
+  notas text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_entradas_proyecto on entradas(proyecto_id);
 
 -- -------------------------------------------------------------
 -- Trigger para actualizar updated_at automáticamente
@@ -87,6 +117,11 @@ create trigger trg_gastos_updated_at
   before update on gastos
   for each row execute function set_updated_at();
 
+drop trigger if exists trg_entradas_updated_at on entradas;
+create trigger trg_entradas_updated_at
+  before update on entradas
+  for each row execute function set_updated_at();
+
 -- -------------------------------------------------------------
 -- Seguridad: activar RLS y permitir solo a usuarios autenticados
 -- (Todo el equipo entra con el mismo usuario/contraseña compartida,
@@ -96,7 +131,9 @@ create trigger trg_gastos_updated_at
 alter table integrantes enable row level security;
 alter table categorias enable row level security;
 alter table proveedores enable row level security;
+alter table proyectos enable row level security;
 alter table gastos enable row level security;
+alter table entradas enable row level security;
 
 drop policy if exists "auth full access" on integrantes;
 create policy "auth full access" on integrantes
@@ -110,14 +147,30 @@ drop policy if exists "auth full access" on proveedores;
 create policy "auth full access" on proveedores
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
+drop policy if exists "auth full access" on proyectos;
+create policy "auth full access" on proyectos
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
 drop policy if exists "auth full access" on gastos;
 create policy "auth full access" on gastos
   for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
+drop policy if exists "auth full access" on entradas;
+create policy "auth full access" on entradas
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- Permisos explícitos a nivel de tabla (además de RLS). Sin esto, algunas
+-- tablas pueden devolver 401 "permission denied" aunque la política exista.
+grant usage on schema public to authenticated;
+grant select, insert, update, delete on table integrantes, categorias, proveedores, proyectos, gastos, entradas to authenticated;
+
 -- =============================================================
--- Datos iniciales: categorías (partidas) y proveedores ya
--- capturados en el documento de proveedores de ROMOR (16 ago 2026)
+-- Datos iniciales: un primer proyecto, categorías (partidas) y
+-- proveedores ya capturados en el documento de ROMOR (16 ago 2026)
 -- =============================================================
+insert into proyectos (nombre) values ('ROMOR')
+on conflict (nombre) do nothing;
+
 insert into categorias (nombre, orden) values
   ('Eléctrico', 10),
   ('Hidrosanitario y gas', 20),
@@ -156,7 +209,7 @@ from (values
   ('Tablaroca', 'Jose Rojas', 'Jose Rojas', '667 756 7884', 'Culiacán, Sin.', null)
 ) as v(categoria_nombre, nombre_empresa, contacto, telefono, ciudad, notas)
 join categorias c on c.nombre = v.categoria_nombre
-on conflict do nothing;
+on conflict (categoria_id, nombre_empresa) do nothing;
 
 -- =============================================================
 -- Storage: crea el bucket para los comprobantes (fotos/PDFs)

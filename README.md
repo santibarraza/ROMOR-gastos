@@ -89,9 +89,22 @@ Puedes usar el mismo correo (santibarraza@gmail.com) para las tres.
 
 1. Comparte con tu equipo: el link de Vercel + la contraseña que definiste en el paso 2.7.
 2. Cada persona entra, escribe la contraseña, y la primera vez elige o escribe su nombre (se guarda en su celular/compu, no lo vuelve a pedir).
-3. Con el botón **+** se agrega un gasto: monto, fecha, partida, proveedor, método de pago, quién pagó y, si quieren, la foto del comprobante.
-4. En la pantalla principal se ve el total gastado, el total por partida y la lista completa, con filtro por categoría.
-5. Cualquiera puede editar o borrar cualquier gasto (tocando el gasto en la lista) — tal como lo pediste, no hay restricciones entre integrantes.
+3. Después elige o crea un **proyecto** (puedes tener varias obras/proyectos separados; cada uno lleva sus propios gastos, entradas y totales).
+4. Con el botón **+** se agrega un gasto: monto, fecha, partida, proveedor, método de pago, quién pagó y, si quieren, la foto del comprobante.
+5. En la pestaña **Entradas** se registra el dinero que entra al proyecto (aportaciones, ingresos) — con eso la app calcula el **Saldo** (entradas − gastos) en verde si es positivo y en rojo si es negativo.
+6. En la pantalla principal se ven las gráficas de gasto por partida y por mes, la lista completa con filtro por categoría, y el botón **⬇️ Exportar a Excel** descarga un archivo `.xlsx` con tres hojas (Resumen, Gastos, Entradas) del proyecto que estés viendo.
+7. Cualquiera puede editar o borrar cualquier gasto/entrada/proyecto — tal como lo pediste, no hay restricciones entre integrantes.
+
+---
+
+## 6.1 Si ya tenías la app funcionando (actualización a proyectos + entradas)
+
+Si ya habías corrido `sql/schema.sql` antes y tu app ya está en uso, **no vuelvas a correr ese archivo completo** (volvería a intentar insertar cosas que ya existen). En vez de eso:
+
+1. Ve a Supabase → **SQL Editor** → **New query**.
+2. Copia y pega **todo** el contenido de `sql/migration_v2_proyectos_entradas.sql` de esta carpeta, y dale **Run**.
+3. Esto agrega las tablas de `proyectos` y `entradas`, mete tus gastos ya existentes dentro de un proyecto llamado "ROMOR" (para no perder nada), limpia los proveedores duplicados y refuerza los permisos.
+4. Vuelve a subir **todos** los archivos de este zip a tu repo de GitHub (reemplazando los que ya tenías) para que la app tenga las pantallas nuevas.
 
 ---
 
@@ -107,10 +120,11 @@ Puedes usar el mismo correo (santibarraza@gmail.com) para las tres.
 ## Estructura del proyecto
 
 ```
-index.html          Toda la interfaz (login, selección de nombre, dashboard, formulario; estilos con Tailwind vía CDN)
-js/config.js         Tus llaves de Supabase — edítalo en el paso 3
-js/supabaseClient.js Conexión con Supabase
-js/data.js           Todas las consultas a la base de datos
-js/main.js           Lógica de la interfaz
-sql/schema.sql       Esquema de base de datos + datos iniciales (proveedores del doc ROMOR)
+index.html                              Toda la interfaz (login, nombre, proyectos, dashboard, formularios; Tailwind vía CDN)
+js/config.js                            Tus llaves de Supabase — edítalo en el paso 3
+js/supabaseClient.js                    Conexión con Supabase
+js/data.js                              Todas las consultas a la base de datos
+js/main.js                              Lógica de la interfaz
+sql/schema.sql                          Esquema completo — solo para un proyecto de Supabase NUEVO
+sql/migration_v2_proyectos_entradas.sql Migración — para un proyecto que ya tenías funcionando (ver 6.1)
 ```

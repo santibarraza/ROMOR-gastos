@@ -20,6 +20,25 @@ window.DATA = (function () {
     return data;
   }
 
+  async function getProyectos() {
+    const { data, error } = await sb
+      .from("proyectos")
+      .select("*")
+      .order("nombre", { ascending: true });
+    if (error) throw error;
+    return data;
+  }
+
+  async function addProyecto(nombre) {
+    const { data, error } = await sb
+      .from("proyectos")
+      .insert({ nombre })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
   async function getIntegrantes() {
     const { data, error } = await sb
       .from("integrantes")
@@ -39,12 +58,14 @@ window.DATA = (function () {
     return data;
   }
 
-  async function getGastos() {
-    const { data, error } = await sb
+  async function getGastos(proyectoId) {
+    let q = sb
       .from("gastos")
       .select("*, categorias(nombre), proveedores(nombre_empresa)")
       .order("fecha", { ascending: false })
       .order("created_at", { ascending: false });
+    if (proyectoId) q = q.eq("proyecto_id", proyectoId);
+    const { data, error } = await q;
     if (error) throw error;
     return data;
   }
@@ -85,6 +106,37 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  async function getEntradas(proyectoId) {
+    let q = sb.from("entradas").select("*").order("fecha", { ascending: false }).order("created_at", { ascending: false });
+    if (proyectoId) q = q.eq("proyecto_id", proyectoId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data;
+  }
+
+  async function getEntrada(id) {
+    const { data, error } = await sb.from("entradas").select("*").eq("id", id).single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function saveEntrada(entrada, id) {
+    if (id) {
+      const { data, error } = await sb.from("entradas").update(entrada).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await sb.from("entradas").insert(entrada).select().single();
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  async function deleteEntrada(id) {
+    const { error } = await sb.from("entradas").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   async function uploadComprobante(file) {
     const ext = file.name.split(".").pop();
     const path = `${crypto.randomUUID()}.${ext}`;
@@ -99,12 +151,18 @@ window.DATA = (function () {
   return {
     getCategorias,
     getProveedores,
+    getProyectos,
+    addProyecto,
     getIntegrantes,
     addIntegrante,
     getGastos,
     getGasto,
     saveGasto,
     deleteGasto,
+    getEntradas,
+    getEntrada,
+    saveEntrada,
+    deleteEntrada,
     uploadComprobante,
   };
 })();

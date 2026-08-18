@@ -1,0 +1,176 @@
+-- =============================================================
+-- ROMOR · Control de gastos de obra
+-- Esquema de base de datos para Supabase (Postgres)
+-- =============================================================
+-- Cómo usar este archivo:
+-- 1. Entra a tu proyecto en https://supabase.com/dashboard
+-- 2. Ve a "SQL Editor" (menú izquierdo) > "New query"
+-- 3. Pega TODO este archivo y dale "Run"
+-- Esto crea las tablas, activa seguridad por fila (RLS) y
+-- precarga las categorías y proveedores que ya tenías capturados.
+-- =============================================================
+
+-- Extensión para generar UUIDs
+create extension if not exists "pgcrypto";
+
+-- -------------------------------------------------------------
+-- Tabla: integrantes (las personas del equipo que capturan/pagan gastos)
+-- -------------------------------------------------------------
+create table if not exists integrantes (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null unique,
+  created_at timestamptz not null default now()
+);
+
+-- -------------------------------------------------------------
+-- Tabla: categorias (partidas de la obra)
+-- -------------------------------------------------------------
+create table if not exists categorias (
+  id uuid primary key default gen_random_uuid(),
+  nombre text not null unique,
+  orden int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- -------------------------------------------------------------
+-- Tabla: proveedores
+-- -------------------------------------------------------------
+create table if not exists proveedores (
+  id uuid primary key default gen_random_uuid(),
+  categoria_id uuid references categorias(id) on delete set null,
+  nombre_empresa text not null,
+  contacto text,
+  telefono text,
+  correo text,
+  ciudad text,
+  notas text,
+  created_at timestamptz not null default now()
+);
+
+-- -------------------------------------------------------------
+-- Tabla: gastos
+-- -------------------------------------------------------------
+create table if not exists gastos (
+  id uuid primary key default gen_random_uuid(),
+  fecha date not null default current_date,
+  monto numeric(12,2) not null check (monto > 0),
+  categoria_id uuid references categorias(id) on delete set null,
+  proveedor_id uuid references proveedores(id) on delete set null,
+  proveedor_texto text, -- por si el proveedor no está en el catálogo
+  descripcion text,
+  metodo_pago text not null default 'Efectivo',
+  pagado_por text,       -- nombre de quién puso el dinero
+  capturado_por text,    -- nombre de quién registró el gasto
+  comprobante_url text,  -- URL pública del archivo en Storage
+  comprobante_nombre text,
+  notas text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_gastos_categoria on gastos(categoria_id);
+create index if not exists idx_gastos_fecha on gastos(fecha);
+
+-- -------------------------------------------------------------
+-- Trigger para actualizar updated_at automáticamente
+-- -------------------------------------------------------------
+create or replace function set_updated_at()
+returns trigger as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_gastos_updated_at on gastos;
+create trigger trg_gastos_updated_at
+  before update on gastos
+  for each row execute function set_updated_at();
+
+-- -------------------------------------------------------------
+-- Seguridad: activar RLS y permitir solo a usuarios autenticados
+-- (Todo el equipo entra con el mismo usuario/contraseña compartida,
+-- así que cualquier persona autenticada puede leer y escribir todo,
+-- tal como se pidió: "todos pueden editar todo")
+-- -------------------------------------------------------------
+alter table integrantes enable row level security;
+alter table categorias enable row level security;
+alter table proveedores enable row level security;
+alter table gastos enable row level security;
+
+drop policy if exists "auth full access" on integrantes;
+create policy "auth full access" on integrantes
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "auth full access" on categorias;
+create policy "auth full access" on categorias
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "auth full access" on proveedores;
+create policy "auth full access" on proveedores
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "auth full access" on gastos;
+create policy "auth full access" on gastos
+  for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- =============================================================
+-- Datos iniciales: categorías (partidas) y proveedores ya
+-- capturados en el documento de proveedores de ROMOR (16 ago 2026)
+-- =============================================================
+insert into categorias (nombre, orden) values
+  ('Eléctrico', 10),
+  ('Hidrosanitario y gas', 20),
+  ('Materiales', 30),
+  ('Ventanería', 40),
+  ('Herrería', 50),
+  ('Carpintería', 60),
+  ('Concreto', 70),
+  ('Persianas', 80),
+  ('HVAC', 90),
+  ('Tablaroca', 100),
+  ('Plomería general', 110),
+  ('Pintura', 120),
+  ('Impermeabilización', 130),
+  ('Cancelería', 140),
+  ('Cocina / Closets', 150),
+  ('Mano de obra', 160),
+  ('Permisos y trámites', 170),
+  ('Otro', 999)
+on conflict (nombre) do nothing;
+
+-- Proveedores (se ligan a su categoría por nombre)
+insert into proveedores (categoria_id, nombre_empresa, contacto, telefono, ciudad, notas)
+select c.id, v.nombre_empresa, v.contacto, v.telefono, v.ciudad, v.notas
+from (values
+  ('Eléctrico', 'Chema', 'Josue Rojas', '667 578 2011', 'Culiacán, Sin.', null),
+  ('Hidrosanitario y gas', 'Juan Luis', 'Juan Luis González', '667 175 0042', 'Culiacán, Sin.', null),
+  ('Materiales', 'HM Express', 'Rosario', '667 730 4408', 'Culiacán, Sin.', null),
+  ('Ventanería', 'SINALUM', 'Miguel', '667 207 7366', 'Culiacán, Sin.', null),
+  ('Herrería', 'Cesar Madrid', 'Cesar Madrid', '667 190 8225', 'Culiacán, Sin.', null),
+  ('Carpintería', 'Corcas', 'Jose Luis Castañeda', '667 161 5681', 'Culiacán, Sin.', null),
+  ('Concreto', 'BAZUA', 'Lorena', '687 120 8679', 'Culiacán, Sin.', null),
+  ('Persianas', 'Senz', 'Melissa', null, 'Culiacán, Sin.', 'Falta WhatsApp/teléfono'),
+  ('HVAC', 'Chaidez', 'Ernesto Chaidez', '672 854 3476', 'Culiacán, Sin.', null),
+  ('Materiales', 'Aceros el Sinaloense', 'Rodolfo Osuna', '667 996 7111', 'Culiacán, Sin.', 'Acero'),
+  ('Tablaroca', 'Jose Rojas', 'Jose Rojas', '667 756 7884', 'Culiacán, Sin.', null)
+) as v(categoria_nombre, nombre_empresa, contacto, telefono, ciudad, notas)
+join categorias c on c.nombre = v.categoria_nombre
+on conflict do nothing;
+
+-- =============================================================
+-- Storage: crea el bucket para los comprobantes (fotos/PDFs)
+-- Esto NO se puede hacer por SQL editor normal; hazlo así:
+-- 1. Ve a "Storage" en el menú izquierdo
+-- 2. "New bucket" > nombre: comprobantes > Public bucket: ACTIVADO
+-- 3. Crea el bucket
+-- Luego regresa aquí y corre lo siguiente para las políticas:
+-- =============================================================
+insert into storage.buckets (id, name, public)
+values ('comprobantes', 'comprobantes', true)
+on conflict (id) do nothing;
+
+drop policy if exists "auth full access comprobantes" on storage.objects;
+create policy "auth full access comprobantes" on storage.objects
+  for all using (bucket_id = 'comprobantes' and auth.role() = 'authenticated')
+  with check (bucket_id = 'comprobantes' and auth.role() = 'authenticated');

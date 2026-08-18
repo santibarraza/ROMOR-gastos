@@ -8,8 +8,13 @@
     integrantes: [],
     proyectos: [],
     gastos: [],
+    entradas: [],
     currentUser: localStorage.getItem("romor_user") || null,
+    // "Último proyecto usado": solo se usa para pre-seleccionar el proyecto
+    // al crear un gasto/entrada nuevo. Ya NO bloquea el acceso al dashboard.
     currentProject: JSON.parse(localStorage.getItem("romor_project") || "null"),
+    // Filtro de la vista general: "" = todos los proyectos juntos.
+    filtroProyecto: "",
     editingId: null,
   };
 
@@ -94,14 +99,9 @@
     showView("login");
   }
   $("logout-btn").addEventListener("click", doLogout);
-  $("proyectos-logout-btn").addEventListener("click", doLogout);
 
   $("change-user-btn").addEventListener("click", () => {
     showNameView();
-  });
-
-  $("change-project-btn").addEventListener("click", () => {
-    goToProyectos(true);
   });
 
   async function afterLogin() {
@@ -109,7 +109,7 @@
     if (!state.currentUser || !state.integrantes.find((i) => i.nombre === state.currentUser)) {
       showNameView();
     } else {
-      await goToProyectos();
+      await goToDashboard();
     }
   }
 
@@ -151,31 +151,41 @@
     }
     state.currentUser = nombre;
     localStorage.setItem("romor_user", nombre);
-    await goToProyectos();
+    await goToDashboard();
   });
 
   // -------------------- CATÁLOGOS --------------------
   async function loadCatalogs() {
-    const [categorias, proveedores, integrantes] = await Promise.all([
+    const [categorias, proveedores, integrantes, proyectos] = await Promise.all([
       DATA.getCategorias(),
       DATA.getProveedores(),
       DATA.getIntegrantes(),
+      DATA.getProyectos(),
     ]);
     state.categorias = categorias;
     state.proveedores = proveedores;
     state.integrantes = integrantes;
+    state.proyectos = proyectos;
   }
 
   // -------------------- PROYECTOS --------------------
-  async function goToProyectos(force) {
-    state.proyectos = await DATA.getProyectos();
-    const cached = state.currentProject;
-    if (!force && cached && state.proyectos.find((p) => p.id === cached.id)) {
-      state.currentProject = state.proyectos.find((p) => p.id === cached.id);
-      await goToDashboard();
-      return;
+  // "Proyectos" ya no es una pantalla obligatoria antes del dashboard: es una
+  // pantalla de administración (crear proyectos, o cambiar el filtro) a la
+  // que se entra desde el enlace "proyectos" en el encabezado del dashboard.
+  $("change-project-btn").addEventListener("click", () => {
+    openProyectosView();
+  });
+
+  $("proyectos-back-btn").addEventListener("click", () => {
+    showView("dashboard");
+  });
+
+  async function openProyectosView() {
+    try {
+      state.proyectos = await DATA.getProyectos();
+    } catch (err) {
+      toast("Error cargando proyectos: " + err.message, true);
     }
-    $("proyectos-user-label").textContent = state.currentUser;
     renderProyectosList();
     showView("proyectos");
   }
@@ -193,46 +203,66 @@
       )
       .join("");
     cont.querySelectorAll(".proyecto-item").forEach((el) => {
-      el.addEventListener("click", () => selectProyecto(el.dataset.id));
+      el.addEventListener("click", () => selectProyectoFiltro(el.dataset.id));
     });
   }
 
-  function selectProyecto(id) {
-    const p = state.proyectos.find((x) => x.id === id);
-    if (!p) return;
-    state.currentProject = p;
-    localStorage.setItem("romor_project", JSON.stringify(p));
+  // El botón "Vista general (todos los proyectos)" vive fijo en el HTML,
+  // fuera de #lista-proyectos, así que se conecta aparte.
+  $("proyecto-vista-general-btn").addEventListener("click", () => {
+    selectProyectoFiltro("");
+  });
+
+  // Elegir un proyecto en la pantalla de "Proyectos" ahora solo ajusta el
+  // filtro del dashboard (y recuerda ese proyecto como el que se usará por
+  // defecto al crear un gasto/entrada nuevo) — ya no bloquea nada.
+  function selectProyectoFiltro(id) {
+    state.filtroProyecto = id || "";
+    if (id) {
+      const p = state.proyectos.find((x) => x.id === id);
+      if (p) {
+        state.currentProject = p;
+        localStorage.setItem("romor_project", JSON.stringify(p));
+      }
+    }
     goToDashboard();
   }
 
   $("proyecto-add-btn").addEventListener("click", async () => {
     const nombre = $("proyecto-new").value.trim();
+    $("proyecto-add-error").classList.add("hidden");
     if (!nombre) return;
     try {
       const p = await DATA.addProyecto(nombre);
       state.proyectos.push(p);
       $("proyecto-new").value = "";
       toast("Proyecto creado");
-      selectProyecto(p.id);
+      renderProyectosList();
+      selectProyectoFiltro(p.id);
     } catch (err) {
-      toast("No se pudo crear (¿ya existe un proyecto con ese nombre?)", true);
+      // Mostramos el error real (antes se ocultaba con un mensaje genérico,
+      // lo que hacía parecer que el botón "no funcionaba").
+      console.error("Error creando proyecto:", err);
+      $("proyecto-add-error").textContent =
+        "No se pudo crear: " + (err.message || "¿ya existe un proyecto con ese nombre?");
+      $("proyecto-add-error").classList.remove("hidden");
     }
   });
 
   // -------------------- DASHBOARD --------------------
   async function goToDashboard() {
     $("current-user-label").textContent = state.currentUser;
-    $("current-project-label").textContent = state.currentProject?.nombre || "";
+    renderFiltroProyecto();
     showView("dashboard");
     await refreshAll();
   }
 
   async function refreshAll() {
     try {
-      const [gastos, entradas] = await Promise.all([
-        DATA.getGastos(state.currentProject?.id),
-        DATA.getEntradas(state.currentProject?.id),
-      ]);
+      // Traemos TODOS los gastos/entradas (de todos los proyectos) y filtramos
+      // en el cliente — así la vista general y el filtro por proyecto no
+      // requieren volver a pedir datos al servidor.
+      const [gastos, entradas] = await Promise.all([DATA.getGastos(), DATA.getEntradas()]);
       state.gastos = gastos;
       state.entradas = entradas;
     } catch (err) {
@@ -247,6 +277,38 @@
 
   // Compatibilidad: algunas partes del código piden solo refrescar gastos/entradas
   const refreshGastos = refreshAll;
+
+  function renderFiltroProyecto() {
+    const sel = $("filtro-proyecto");
+    const current = state.filtroProyecto || "";
+    sel.innerHTML =
+      '<option value="">🌐 Todos los proyectos</option>' +
+      state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
+    sel.value = current;
+  }
+
+  $("filtro-proyecto").addEventListener("change", () => {
+    state.filtroProyecto = $("filtro-proyecto").value;
+    renderResumen();
+    renderLista();
+    renderEntradasList();
+  });
+
+  function gastosFiltrados() {
+    return state.filtroProyecto ? state.gastos.filter((g) => g.proyecto_id === state.filtroProyecto) : state.gastos;
+  }
+
+  function entradasFiltradas() {
+    return state.filtroProyecto
+      ? state.entradas.filter((e) => e.proyecto_id === state.filtroProyecto)
+      : state.entradas;
+  }
+
+  // Proyecto a usar por defecto al crear un gasto/entrada nuevo: el que esté
+  // filtrado en el dashboard, si no el último usado, si no el primero de la lista.
+  function defaultProyectoId() {
+    return state.filtroProyecto || state.currentProject?.id || state.proyectos[0]?.id || "";
+  }
 
   function renderFiltroCategoria() {
     const sel = $("filtro-categoria");
@@ -275,8 +337,10 @@
   }
 
   function renderResumen() {
-    const totalGastos = state.gastos.reduce((s, g) => s + Number(g.monto), 0);
-    const totalEntradas = state.entradas.reduce((s, e) => s + Number(e.monto), 0);
+    const gastos = gastosFiltrados();
+    const entradas = entradasFiltradas();
+    const totalGastos = gastos.reduce((s, g) => s + Number(g.monto), 0);
+    const totalEntradas = entradas.reduce((s, e) => s + Number(e.monto), 0);
     const saldo = totalEntradas - totalGastos;
     $("total-general").textContent = fmt(totalGastos);
     $("total-entradas").textContent = fmt(totalEntradas);
@@ -285,7 +349,7 @@
     saldoEl.style.color = saldo >= 0 ? "#0ca30c" : "#d03b3b";
 
     const porCategoria = {};
-    for (const g of state.gastos) {
+    for (const g of gastos) {
       const nombre = g.categorias?.nombre || "Sin categoría";
       porCategoria[nombre] = (porCategoria[nombre] || 0) + Number(g.monto);
     }
@@ -318,8 +382,9 @@
 
   function renderGraficaMes() {
     const cont = $("grafica-mes");
+    const gastos = gastosFiltrados();
     const porMes = {};
-    for (const g of state.gastos) {
+    for (const g of gastos) {
       const mes = (g.fecha || "").slice(0, 7);
       if (!mes) continue;
       porMes[mes] = (porMes[mes] || 0) + Number(g.monto);
@@ -355,18 +420,24 @@
   }
 
   function renderLista() {
-    const filtro = $("filtro-categoria").value;
-    const gastos = filtro ? state.gastos.filter((g) => g.categoria_id === filtro) : state.gastos;
+    const mostrarTodos = !state.filtroProyecto;
+    const filtroCat = $("filtro-categoria").value;
+    let gastos = gastosFiltrados();
+    if (filtroCat) gastos = gastos.filter((g) => g.categoria_id === filtroCat);
     const cont = $("lista-gastos");
     $("lista-vacia").classList.toggle("hidden", gastos.length > 0);
     cont.innerHTML = gastos
       .map((g) => {
         const proveedor = g.proveedores?.nombre_empresa || g.proveedor_texto || "";
+        const proyectoTag =
+          mostrarTodos && g.proyectos?.nombre
+            ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(g.proyectos.nombre)}</span>`
+            : "";
         return `
         <button data-id="${g.id}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 p-3 hover:border-slate-300 transition">
           <div class="flex justify-between items-start">
             <div class="min-w-0 pr-2">
-              <p class="font-medium text-slate-900 truncate">${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
+              <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
               <p class="text-xs text-slate-500 truncate">${esc(g.categorias?.nombre || "")}${proveedor ? " · " + esc(proveedor) : ""}</p>
               <p class="text-xs text-slate-400">${fmtFecha(g.fecha)} · ${esc(g.metodo_pago || "")}${g.pagado_por ? " · pagó " + esc(g.pagado_por) : ""}</p>
             </div>
@@ -387,21 +458,27 @@
 
   // -------------------- ENTRADAS --------------------
   function renderEntradasList() {
+    const mostrarTodos = !state.filtroProyecto;
+    const entradas = entradasFiltradas();
     const cont = $("lista-entradas");
-    $("lista-entradas-vacia").classList.toggle("hidden", state.entradas.length > 0);
-    cont.innerHTML = state.entradas
-      .map(
-        (e) => `
+    $("lista-entradas-vacia").classList.toggle("hidden", entradas.length > 0);
+    cont.innerHTML = entradas
+      .map((e) => {
+        const proyectoTag =
+          mostrarTodos && e.proyectos?.nombre
+            ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(e.proyectos.nombre)}</span>`
+            : "";
+        return `
       <button data-id="${e.id}" class="entrada-item w-full text-left bg-white rounded-xl border border-slate-200 p-3 hover:border-slate-300 transition">
         <div class="flex justify-between items-start">
           <div class="min-w-0 pr-2">
-            <p class="font-medium text-slate-900 truncate">${esc(e.concepto || "Entrada")}</p>
+            <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(e.concepto || "Entrada")}</p>
             <p class="text-xs text-slate-400">${fmtFecha(e.fecha)}${e.aportado_por ? " · aportó " + esc(e.aportado_por) : ""}</p>
           </div>
           <p class="font-semibold" style="color:#0ca30c">${fmt(e.monto)}</p>
         </div>
-      </button>`
-      )
+      </button>`;
+      })
       .join("");
     cont.querySelectorAll(".entrada-item").forEach((el) => {
       el.addEventListener("click", () => openEntradaForm(el.dataset.id));
@@ -413,6 +490,14 @@
     showView("dashboard");
   });
 
+  function rememberProyecto(id) {
+    const p = state.proyectos.find((x) => x.id === id);
+    if (p) {
+      state.currentProject = p;
+      localStorage.setItem("romor_project", JSON.stringify(p));
+    }
+  }
+
   async function openEntradaForm(id) {
     $("entrada-form-error").classList.add("hidden");
     $("entrada-aportador").innerHTML = state.integrantes.map((i) => `<option value="${esc(i.nombre)}">${esc(i.nombre)}</option>`).join("");
@@ -423,7 +508,7 @@
       $("entrada-delete-btn").classList.remove("hidden");
       const e = state.entradas.find((x) => x.id === id) || (await DATA.getEntrada(id));
       $("entrada-id").value = e.id;
-      $("entrada-proyecto").value = e.proyecto_id || state.currentProject?.id || "";
+      $("entrada-proyecto").value = e.proyecto_id || defaultProyectoId();
       $("entrada-monto").value = e.monto;
       $("entrada-fecha").value = e.fecha;
       $("entrada-concepto").value = e.concepto || "";
@@ -433,7 +518,7 @@
       $("entrada-form-title").textContent = "Nueva entrada";
       $("entrada-delete-btn").classList.add("hidden");
       $("entrada-id").value = "";
-      $("entrada-proyecto").value = state.currentProject?.id || "";
+      $("entrada-proyecto").value = defaultProyectoId();
       $("entrada-monto").value = "";
       $("entrada-fecha").value = new Date().toISOString().slice(0, 10);
       $("entrada-concepto").value = "";
@@ -450,8 +535,9 @@
     btn.disabled = true;
     btn.textContent = "Guardando...";
     try {
+      const proyectoId = $("entrada-proyecto").value || defaultProyectoId() || null;
       const payload = {
-        proyecto_id: $("entrada-proyecto").value || state.currentProject?.id || null,
+        proyecto_id: proyectoId,
         monto: parseFloat($("entrada-monto").value),
         fecha: $("entrada-fecha").value,
         concepto: $("entrada-concepto").value.trim() || null,
@@ -461,6 +547,7 @@
       };
       const id = $("entrada-id").value || null;
       await DATA.saveEntrada(payload, id);
+      if (proyectoId) rememberProyecto(proyectoId);
       toast(id ? "Entrada actualizada" : "Entrada guardada");
       showView("dashboard");
       await refreshAll();
@@ -490,7 +577,11 @@
   // -------------------- EXPORTAR A EXCEL --------------------
   $("export-excel-btn").addEventListener("click", () => {
     try {
-      const gastosRows = state.gastos.map((g) => ({
+      const mostrarTodos = !state.filtroProyecto;
+      const gastos = gastosFiltrados();
+      const entradas = entradasFiltradas();
+      const gastosRows = gastos.map((g) => ({
+        ...(mostrarTodos ? { Proyecto: g.proyectos?.nombre || "" } : {}),
         Fecha: g.fecha,
         Partida: g.categorias?.nombre || "",
         Proveedor: g.proveedores?.nombre_empresa || g.proveedor_texto || "",
@@ -501,7 +592,8 @@
         "Capturó": g.capturado_por || "",
         Notas: g.notas || "",
       }));
-      const entradasRows = state.entradas.map((e) => ({
+      const entradasRows = entradas.map((e) => ({
+        ...(mostrarTodos ? { Proyecto: e.proyectos?.nombre || "" } : {}),
         Fecha: e.fecha,
         Concepto: e.concepto || "",
         Monto: Number(e.monto),
@@ -509,8 +601,8 @@
         "Capturó": e.capturado_por || "",
         Notas: e.notas || "",
       }));
-      const totalGastos = state.gastos.reduce((s, g) => s + Number(g.monto), 0);
-      const totalEntradas = state.entradas.reduce((s, e) => s + Number(e.monto), 0);
+      const totalGastos = gastos.reduce((s, g) => s + Number(g.monto), 0);
+      const totalEntradas = entradas.reduce((s, e) => s + Number(e.monto), 0);
       const resumenRows = [
         { Concepto: "Total entradas", Monto: totalEntradas },
         { Concepto: "Total gastos", Monto: totalGastos },
@@ -522,7 +614,12 @@
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(gastosRows), "Gastos");
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(entradasRows), "Entradas");
 
-      const nombreProyecto = (state.currentProject?.nombre || "proyecto").replace(/[^a-z0-9]+/gi, "_");
+      const nombreProyecto = mostrarTodos
+        ? "todos_los_proyectos"
+        : (state.proyectos.find((p) => p.id === state.filtroProyecto)?.nombre || "proyecto").replace(
+            /[^a-z0-9]+/gi,
+            "_"
+          );
       XLSX.writeFile(wb, `gastos_${nombreProyecto}.xlsx`);
     } catch (err) {
       toast("No se pudo exportar: " + err.message, true);
@@ -581,7 +678,7 @@
       $("gasto-delete-btn").classList.remove("hidden");
       const g = state.gastos.find((x) => x.id === id) || (await DATA.getGasto(id));
       $("gasto-id").value = g.id;
-      $("gasto-proyecto").value = g.proyecto_id || state.currentProject?.id || "";
+      $("gasto-proyecto").value = g.proyecto_id || defaultProyectoId();
       $("gasto-monto").value = g.monto;
       $("gasto-fecha").value = g.fecha;
       $("gasto-categoria").value = g.categoria_id || "";
@@ -600,7 +697,7 @@
       $("form-title").textContent = "Nuevo gasto";
       $("gasto-delete-btn").classList.add("hidden");
       $("gasto-id").value = "";
-      $("gasto-proyecto").value = state.currentProject?.id || "";
+      $("gasto-proyecto").value = defaultProyectoId();
       $("gasto-monto").value = "";
       $("gasto-fecha").value = new Date().toISOString().slice(0, 10);
       $("gasto-categoria").value = state.categorias[0]?.id || "";
@@ -622,8 +719,9 @@
     btn.disabled = true;
     btn.textContent = "Guardando...";
     try {
+      const proyectoId = $("gasto-proyecto").value || defaultProyectoId() || null;
       const payload = {
-        proyecto_id: $("gasto-proyecto").value || state.currentProject?.id || null,
+        proyecto_id: proyectoId,
         monto: parseFloat($("gasto-monto").value),
         fecha: $("gasto-fecha").value,
         categoria_id: $("gasto-categoria").value || null,
@@ -645,6 +743,7 @@
 
       const id = $("gasto-id").value || null;
       await DATA.saveGasto(payload, id);
+      if (proyectoId) rememberProyecto(proyectoId);
       toast(id ? "Gasto actualizado" : "Gasto guardado");
       showView("dashboard");
       await refreshGastos();

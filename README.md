@@ -73,6 +73,8 @@ Puedes usar el mismo correo (santibarraza@gmail.com) para las tres.
 3. En la página del repo, da clic en **uploading an existing file** (o el botón **Add file → Upload files**).
 4. Arrastra **todos los archivos y carpetas** de esta carpeta (`index.html`, `js/`, `sql/`, `README.md`) y dale **Commit changes**.
 
+> ⚠️ **Si ya tenías la app funcionando y solo estás actualizando** (por ejemplo, agregando una función nueva): **NO subas `js/config.js`** a menos que este archivo en particular haya cambiado — ese archivo trae tu URL y llave real de Supabase, y si subes el de la plantilla lo pisas con los valores de ejemplo (`TU-PROYECTO`, `TU-ANON-KEY`) y el login deja de funcionar. Sube todo lo demás normal; solo evita reemplazar `js/config.js` salvo que te lo indique explícitamente.
+
 ---
 
 ## 5. Publicar en Vercel
@@ -89,11 +91,12 @@ Puedes usar el mismo correo (santibarraza@gmail.com) para las tres.
 
 1. Comparte con tu equipo: el link de Vercel + la contraseña que definiste en el paso 2.7.
 2. Cada persona entra, escribe la contraseña, y la primera vez elige o escribe su nombre (se guarda en su celular/compu, no lo vuelve a pedir).
-3. Después elige o crea un **proyecto** (puedes tener varias obras/proyectos separados; cada uno lleva sus propios gastos, entradas y totales).
-4. Con el botón **+** se agrega un gasto: monto, fecha, partida, proveedor, método de pago, quién pagó y, si quieren, la foto del comprobante.
-5. En la pestaña **Entradas** se registra el dinero que entra al proyecto (aportaciones, ingresos) — con eso la app calcula el **Saldo** (entradas − gastos) en verde si es positivo y en rojo si es negativo.
-6. En la pantalla principal se ven las gráficas de gasto por partida y por mes, la lista completa con filtro por categoría, y el botón **⬇️ Exportar a Excel** descarga un archivo `.xlsx` con tres hojas (Resumen, Gastos, Entradas) del proyecto que estés viendo.
-7. Cualquiera puede editar o borrar cualquier gasto/entrada/proyecto — tal como lo pediste, no hay restricciones entre integrantes.
+3. Después de elegir su nombre, entra **directo al dashboard con la vista general**: los totales, gráficas y lista que ves por defecto combinan **todos los proyectos juntos**. Arriba hay un selector "🌐 Todos los proyectos" con el que puedes cambiar a ver solo uno en particular, sin perder la vista general de conjunto.
+4. Con el botón **+** se agrega un gasto en cualquier momento, sin necesidad de entrar antes a un proyecto — el formulario te pregunta a qué proyecto pertenece (por defecto propone el que tengas filtrado, o el último que usaste).
+5. Con el enlace **"proyectos"** (junto a tu nombre) entras a administrar proyectos: crear uno nuevo, o tocar uno para filtrar el dashboard por ese proyecto. "🌐 Vista general" regresa a ver todo junto.
+6. En la pestaña **Entradas** se registra el dinero que entra a un proyecto (aportaciones, ingresos) — con eso la app calcula el **Saldo** (entradas − gastos) en verde si es positivo y en rojo si es negativo.
+7. En la pantalla principal se ven las gráficas de gasto por partida y por mes, la lista completa con filtro por categoría (y por proyecto, si dejas la vista en "Todos los proyectos" cada gasto/entrada muestra una etiqueta con su proyecto), y el botón **⬇️ Exportar a Excel** descarga un archivo `.xlsx` con tres hojas (Resumen, Gastos, Entradas) reflejando lo que estés viendo (todo, o solo el proyecto filtrado).
+8. Cualquiera puede editar o borrar cualquier gasto/entrada/proyecto — tal como lo pediste, no hay restricciones entre integrantes.
 
 ---
 
@@ -105,6 +108,17 @@ Si ya habías corrido `sql/schema.sql` antes y tu app ya está en uso, **no vuel
 2. Copia y pega **todo** el contenido de `sql/migration_v2_proyectos_entradas.sql` de esta carpeta, y dale **Run**.
 3. Esto agrega las tablas de `proyectos` y `entradas`, mete tus gastos ya existentes dentro de un proyecto llamado "ROMOR" (para no perder nada), limpia los proveedores duplicados y refuerza los permisos.
 4. Vuelve a subir **todos** los archivos de este zip a tu repo de GitHub (reemplazando los que ya tenías) para que la app tenga las pantallas nuevas.
+
+---
+
+## 6.2 Actualización: vista general por defecto
+
+Esta versión cambia cómo funcionan los proyectos en el dashboard:
+
+- Ya no hay que entrar primero a un proyecto para ver gastos o agregar uno nuevo — al iniciar sesión ves de una vez la vista general (todos los proyectos combinados), y el botón **+** funciona directo desde ahí.
+- La pantalla de "Proyectos" pasó de ser un paso obligatorio a una pantalla de administración: sirve para crear proyectos nuevos o cambiar el filtro del dashboard.
+- **No necesitas correr ninguna migración de SQL nueva para esto** — es un cambio solo de interfaz, no de la base de datos. Basta con subir los archivos actualizados (`index.html`, `js/data.js`, `js/main.js`) a GitHub como siempre (recuerda: **no** subas `js/config.js`).
+- Si el botón "Crear" de un proyecto nuevo no hace nada o no lo ves reflejado, ahora aparece un mensaje de error debajo del botón con el motivo real (por ejemplo, si te faltó correr la migración `migration_v2_proyectos_entradas.sql` de la sección 6.1, o si ya existe un proyecto con ese nombre) — antes ese error quedaba oculto.
 
 ---
 

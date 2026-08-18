@@ -80,26 +80,35 @@
  </div>
 </div>
 
-<!-- ===================== SELECCIÓN / ALTA DE PROYECTO ===================== -->
+<!-- ===================== ADMINISTRAR PROYECTOS ===================== -->
 <div id="view-proyectos" class="view">
- <div class="center-screen">
-  <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-    <div class="text-center mb-6">
-      <div class="text-3xl mb-2">🏗️</div>
-      <h1 class="text-lg font-bold text-slate-900">¿Qué proyecto vamos a revisar?</h1>
-      <p class="text-slate-500 text-sm">Hola, <span id="proyectos-user-label" class="font-medium"></span> · <button id="proyectos-logout-btn" class="underline">salir</button></p>
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+      <button id="proyectos-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <h1 class="font-bold text-slate-900">Proyectos</h1>
     </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-4 pb-24">
+    <p class="text-sm text-slate-500 mb-3">
+      Toca un proyecto para ver solo sus gastos, o crea uno nuevo abajo. Desde "Vista general" ves todos juntos.
+    </p>
+
+    <button id="proyecto-vista-general-btn" data-id="" class="proyecto-item w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5 flex justify-between items-center transition mb-2">
+      <span class="font-medium text-slate-800">🌐 Vista general (todos los proyectos)</span>
+      <span class="text-slate-400">→</span>
+    </button>
 
     <div id="lista-proyectos" class="space-y-2 mb-4"></div>
-    <p id="proyectos-vacio" class="text-center text-slate-400 text-sm py-3 hidden">Aún no hay proyectos. Crea el primero abajo.</p>
+    <p id="proyectos-vacio" class="text-center text-slate-400 text-sm py-3 hidden">Aún no has creado ningún proyecto.</p>
 
     <div class="border-t border-slate-200 pt-4 flex gap-2">
       <input id="proyecto-new" type="text" placeholder="Nombre del nuevo proyecto..."
         class="flex-1 rounded-lg border border-slate-300 px-3 py-2.5" />
       <button id="proyecto-add-btn" class="px-3 rounded-lg border border-slate-300 hover:bg-slate-50">Crear</button>
     </div>
-  </div>
- </div>
+    <p id="proyecto-add-error" class="text-red-600 text-sm mt-2 hidden"></p>
+  </main>
 </div>
 
 <!-- ===================== DASHBOARD ===================== -->
@@ -107,14 +116,21 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
       <div>
-        <h1 class="font-bold text-slate-900 leading-tight">🏗️ <span id="current-project-label"></span></h1>
-        <p class="text-xs text-slate-500">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">otro proyecto</button></p>
+        <h1 class="font-bold text-slate-900 leading-tight">🏗️ ROMOR</h1>
+        <p class="text-xs text-slate-500">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">proyectos</button></p>
       </div>
       <button id="logout-btn" class="text-sm text-slate-500 hover:text-slate-800">Salir</button>
     </div>
   </header>
 
   <main class="max-w-3xl mx-auto px-4 py-4 pb-24">
+    <!-- Filtro de proyecto (vista general por defecto) -->
+    <div class="mb-3">
+      <select id="filtro-proyecto" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium bg-white">
+        <option value="">🌐 Todos los proyectos</option>
+      </select>
+    </div>
+
     <!-- Acciones -->
     <div class="flex justify-end mb-3">
       <button id="export-excel-btn" class="text-sm bg-white border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50 text-slate-700">

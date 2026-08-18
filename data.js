@@ -61,7 +61,7 @@ window.DATA = (function () {
   async function getGastos(proyectoId) {
     let q = sb
       .from("gastos")
-      .select("*, categorias(nombre), proveedores(nombre_empresa)")
+      .select("*, categorias(nombre), proveedores(nombre_empresa), proyectos(nombre)")
       .order("fecha", { ascending: false })
       .order("created_at", { ascending: false });
     if (proyectoId) q = q.eq("proyecto_id", proyectoId);
@@ -107,7 +107,11 @@ window.DATA = (function () {
   }
 
   async function getEntradas(proyectoId) {
-    let q = sb.from("entradas").select("*").order("fecha", { ascending: false }).order("created_at", { ascending: false });
+    let q = sb
+      .from("entradas")
+      .select("*, proyectos(nombre)")
+      .order("fecha", { ascending: false })
+      .order("created_at", { ascending: false });
     if (proyectoId) q = q.eq("proyecto_id", proyectoId);
     const { data, error } = await q;
     if (error) throw error;

@@ -329,10 +329,10 @@
     $("panel-entradas").classList.toggle("hidden", isGastos);
     $("tab-gastos-btn").className =
       "tab-btn flex-1 rounded-lg py-2 text-sm font-medium " +
-      (isGastos ? "bg-slate-900 text-white" : "bg-white border border-slate-300 text-slate-600");
+      (isGastos ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
     $("tab-entradas-btn").className =
       "tab-btn flex-1 rounded-lg py-2 text-sm font-medium " +
-      (!isGastos ? "bg-slate-900 text-white" : "bg-white border border-slate-300 text-slate-600");
+      (!isGastos ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
     $("fab-add").classList.toggle("hidden", !isGastos);
   }
 
@@ -368,7 +368,7 @@
             <span class="font-medium text-slate-900">${fmt(monto)}</span>
           </div>
           <div class="w-full bg-slate-100 rounded-full h-1.5">
-            <div class="h-1.5 rounded-full" style="width:${(monto / max) * 100}%;background:#2a78d6"></div>
+            <div class="h-1.5 rounded-full" style="width:${(monto / max) * 100}%;background:#DB002E"></div>
           </div>
         </div>`
         )
@@ -408,7 +408,7 @@
         const label = `${MESES_ABBR[parseInt(mm, 10) - 1]} ${yy.slice(2)}`;
         return `<g>
         <title>${esc(label)}: ${fmt(porMes[m])}</title>
-        <rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="4" fill="#2a78d6"></rect>
+        <rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="4" fill="#DB002E"></rect>
         <text x="${x + barW / 2}" y="${H - 6}" text-anchor="middle" font-size="9" fill="#898781">${esc(label)}</text>
       </g>`;
       })
@@ -434,7 +434,7 @@
             ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(g.proyectos.nombre)}</span>`
             : "";
         return `
-        <button data-id="${g.id}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 p-3 hover:border-slate-300 transition">
+        <button data-id="${g.id}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
           <div class="flex justify-between items-start">
             <div class="min-w-0 pr-2">
               <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
@@ -469,7 +469,7 @@
             ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(e.proyectos.nombre)}</span>`
             : "";
         return `
-      <button data-id="${e.id}" class="entrada-item w-full text-left bg-white rounded-xl border border-slate-200 p-3 hover:border-slate-300 transition">
+      <button data-id="${e.id}" class="entrada-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
         <div class="flex justify-between items-start">
           <div class="min-w-0 pr-2">
             <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(e.concepto || "Entrada")}</p>

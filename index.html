@@ -4,12 +4,42 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
 <title>ROMOR · Gastos de obra</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏗️</text></svg>" />
+<link rel="icon" type="image/png" sizes="16x16" href="assets/favicon-16.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png" />
+<link rel="shortcut icon" href="assets/favicon.ico" />
+<link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap" rel="stylesheet" />
+<script>
+  // Paleta de marca ROMOR, tomada directo del logo:
+  // rojo #DB002E (texto del wordmark) y naranja #FFB000 (el punto).
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          brand: { DEFAULT: "#DB002E", dark: "#B8001F", 50: "#FDECEE" },
+          accent: { DEFAULT: "#FFB000" },
+        },
+        fontFamily: {
+          display: ['"Bebas Neue"', "sans-serif"],
+        },
+      },
+    },
+  };
+</script>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  body { font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  /* Bebas Neue para títulos de pantalla (h1) — es una fuente condensada de
+     solo mayúsculas/versalitas por diseño, así que le damos un poco más de
+     tracking para que respire; Roboto se usa para todo lo demás. */
+  h1 { font-family: 'Bebas Neue', 'Roboto', sans-serif; letter-spacing: 0.02em; }
+  .logo-img { display: block; height: 2.25rem; width: auto; }
   .view { display: none; }
   .view.active { display: block; }
   input, select, textarea { font-size: 16px; } /* evita zoom automático en iOS */
@@ -24,6 +54,13 @@
     justify-content: center;
     padding: 2.5rem 1rem;
   }
+  /* Foco de marca consistente en todos los campos, en vez del azul por
+     defecto del navegador — reemplaza cualquier focus:ring de Tailwind. */
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: #DB002E;
+    box-shadow: 0 0 0 3px rgba(219, 0, 46, 0.15);
+  }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
@@ -35,18 +72,17 @@
  <div class="center-screen">
   <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
     <div class="text-center mb-6">
-      <div class="text-4xl mb-2">🏗️</div>
-      <h1 class="text-xl font-bold text-slate-900">ROMOR</h1>
+      <img src="assets/logo.png" alt="ROMOR" class="logo-img mx-auto mb-3" style="height:3rem" />
       <p class="text-slate-500 text-sm">Control de gastos de obra</p>
     </div>
     <form id="form-login" class="space-y-4">
       <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">Contraseña del equipo</label>
         <input id="login-password" type="password" required
-          class="w-full rounded-lg border border-slate-300 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-800" />
+          class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
       </div>
       <button type="submit" id="login-btn"
-        class="w-full bg-slate-900 text-white rounded-lg py-2.5 font-medium hover:bg-slate-800 transition">
+        class="w-full bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark transition">
         Entrar
       </button>
       <p id="login-error" class="text-red-600 text-sm hidden"></p>
@@ -60,7 +96,7 @@
  <div class="center-screen">
   <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
     <div class="text-center mb-6">
-      <div class="text-3xl mb-2">👋</div>
+      <img src="assets/favicon-192.png" alt="" class="w-10 h-10 mx-auto mb-2" />
       <h1 class="text-lg font-bold text-slate-900">¿Quién eres?</h1>
       <p class="text-slate-500 text-sm">Así sabremos quién capturó cada gasto</p>
     </div>
@@ -72,7 +108,7 @@
         <button id="name-add-btn" class="px-3 rounded-lg border border-slate-300 hover:bg-slate-50">Agregar</button>
       </div>
       <button id="name-continue-btn"
-        class="w-full bg-slate-900 text-white rounded-lg py-2.5 font-medium hover:bg-slate-800 transition">
+        class="w-full bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark transition">
         Continuar
       </button>
     </div>
@@ -85,7 +121,7 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
       <button id="proyectos-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
-      <h1 class="font-bold text-slate-900">Proyectos</h1>
+      <h1 class="text-lg font-bold text-slate-900">Proyectos</h1>
     </div>
   </header>
 
@@ -116,8 +152,8 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
       <div>
-        <h1 class="font-bold text-slate-900 leading-tight">🏗️ ROMOR</h1>
-        <p class="text-xs text-slate-500">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">proyectos</button></p>
+        <img src="assets/logo.png" alt="ROMOR" class="logo-img" style="height:1.5rem" />
+        <p class="text-xs text-slate-500 mt-1">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">proyectos</button></p>
       </div>
       <button id="logout-btn" class="text-sm text-slate-500 hover:text-slate-800">Salir</button>
     </div>
@@ -133,43 +169,44 @@
 
     <!-- Acciones -->
     <div class="flex justify-end mb-3">
-      <button id="export-excel-btn" class="text-sm bg-white border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50 text-slate-700">
-        ⬇️ Exportar a Excel
+      <button id="export-excel-btn" class="inline-flex items-center gap-1.5 text-sm bg-white border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50 text-slate-700 shadow-sm">
+        <svg viewBox="0 0 20 20" fill="none" class="w-4 h-4 text-brand shrink-0"><path d="M10 3v9m0 0 3.5-3.5M10 12l-3.5-3.5M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Exportar a Excel
       </button>
     </div>
 
     <!-- Resumen -->
     <div class="grid grid-cols-3 gap-2 mb-4">
-      <div class="bg-white rounded-xl border border-slate-200 p-3">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
         <p class="text-xs text-slate-500">Entradas</p>
-        <p id="total-entradas" class="text-lg font-bold text-slate-900">$0</p>
+        <p id="total-entradas" class="text-xl font-display tracking-wide text-slate-900">$0</p>
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-3">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
         <p class="text-xs text-slate-500">Gastos</p>
-        <p id="total-general" class="text-lg font-bold text-slate-900">$0</p>
+        <p id="total-general" class="text-xl font-display tracking-wide text-slate-900">$0</p>
       </div>
-      <div class="bg-white rounded-xl border border-slate-200 p-3">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
         <p class="text-xs text-slate-500">Saldo</p>
-        <p id="total-saldo" class="text-lg font-bold">$0</p>
+        <p id="total-saldo" class="text-xl font-display tracking-wide">$0</p>
       </div>
     </div>
 
     <!-- Tabs -->
     <div class="flex gap-2 mb-4">
-      <button id="tab-gastos-btn" class="tab-btn flex-1 rounded-lg py-2 text-sm font-medium bg-slate-900 text-white">Gastos</button>
+      <button id="tab-gastos-btn" class="tab-btn flex-1 rounded-lg py-2 text-sm font-medium bg-brand text-white">Gastos</button>
       <button id="tab-entradas-btn" class="tab-btn flex-1 rounded-lg py-2 text-sm font-medium bg-white border border-slate-300 text-slate-600">Entradas</button>
     </div>
 
     <!-- ===== Panel de gastos ===== -->
     <div id="panel-gastos">
       <!-- Totales por categoría -->
-      <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-4">
         <h2 class="text-sm font-semibold text-slate-700 mb-3">Por partida</h2>
         <div id="totales-categoria" class="space-y-2"></div>
       </div>
 
       <!-- Gastos por mes -->
-      <div class="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-4">
         <h2 class="text-sm font-semibold text-slate-700 mb-3">Por mes</h2>
         <div id="grafica-mes"></div>
       </div>
@@ -189,7 +226,7 @@
     <!-- ===== Panel de entradas ===== -->
     <div id="panel-entradas" class="hidden">
       <div class="flex justify-end mb-3">
-        <button id="entrada-add-open-btn" class="bg-slate-900 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-slate-800">
+        <button id="entrada-add-open-btn" class="bg-brand text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-brand-dark shadow-sm">
           + Nueva entrada
         </button>
       </div>
@@ -199,7 +236,7 @@
   </main>
 
   <button id="fab-add"
-    class="fixed bottom-5 right-5 bg-slate-900 text-white rounded-full w-14 h-14 shadow-lg flex items-center justify-center text-2xl hover:bg-slate-800">
+    class="fixed bottom-5 right-5 bg-brand text-white rounded-full w-14 h-14 shadow-xl flex items-center justify-center text-2xl hover:bg-brand-dark transition">
     +
   </button>
 </div>
@@ -209,7 +246,7 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
       <button id="entrada-form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
-      <h1 id="entrada-form-title" class="font-bold text-slate-900">Nueva entrada</h1>
+      <h1 id="entrada-form-title" class="text-lg font-bold text-slate-900">Nueva entrada</h1>
     </div>
   </header>
 
@@ -255,7 +292,7 @@
 
       <div class="flex gap-2 pt-2">
         <button type="submit" id="entrada-save-btn"
-          class="flex-1 bg-slate-900 text-white rounded-lg py-2.5 font-medium hover:bg-slate-800">
+          class="flex-1 bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark">
           Guardar
         </button>
         <button type="button" id="entrada-delete-btn"
@@ -272,7 +309,7 @@
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
       <button id="form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
-      <h1 id="form-title" class="font-bold text-slate-900">Nuevo gasto</h1>
+      <h1 id="form-title" class="text-lg font-bold text-slate-900">Nuevo gasto</h1>
     </div>
   </header>
 
@@ -349,7 +386,7 @@
 
       <div class="flex gap-2 pt-2">
         <button type="submit" id="gasto-save-btn"
-          class="flex-1 bg-slate-900 text-white rounded-lg py-2.5 font-medium hover:bg-slate-800">
+          class="flex-1 bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark">
           Guardar
         </button>
         <button type="button" id="gasto-delete-btn"

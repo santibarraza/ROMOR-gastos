@@ -10,12 +10,17 @@
 <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png" />
 <link rel="shortcut icon" href="assets/favicon.ico" />
 <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#DB002E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
 <script>
   // Paleta de marca ROMOR, tomada directo del logo:
   // rojo #DB002E (texto del wordmark) y naranja #FFB000 (el punto).
+  // IMPORTANTE: este script debe ir DESPUÉS de cargar cdn.tailwindcss.com
+  // (arriba) — el objeto global `tailwind` no existe todavía antes de eso.
   tailwind.config = {
     theme: {
       extend: {
@@ -30,9 +35,10 @@
     },
   };
 </script>
-<script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf-autotable.min.js"></script>
 <style>
   body { font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
   /* Bebas Neue para títulos de pantalla (h1) — es una fuente condensada de
@@ -66,6 +72,9 @@
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 
 <div id="toast" class="fixed top-3 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2 rounded-lg shadow-lg text-white text-sm"></div>
+<div id="offline-banner" class="hidden fixed top-0 inset-x-0 z-40 bg-accent text-slate-900 text-xs font-medium text-center py-1.5 px-2">
+  📡 Sin conexión — lo que captures se guarda en este celular y se sube solo cuando regrese el internet.
+</div>
 
 <!-- ===================== LOGIN ===================== -->
 <div id="view-login" class="view active">
@@ -153,7 +162,7 @@
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
       <div>
         <img src="assets/logo.png" alt="ROMOR" class="logo-img" style="height:1.5rem" />
-        <p class="text-xs text-slate-500 mt-1">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">proyectos</button></p>
+        <p class="text-xs text-slate-500 mt-1">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">proyectos</button> · <button id="open-proveedores-btn" class="underline">proveedores</button></p>
       </div>
       <button id="logout-btn" class="text-sm text-slate-500 hover:text-slate-800">Salir</button>
     </div>
@@ -168,10 +177,14 @@
     </div>
 
     <!-- Acciones -->
-    <div class="flex justify-end mb-3">
+    <div class="flex justify-end gap-2 mb-3">
+      <button id="export-pdf-btn" class="inline-flex items-center gap-1.5 text-sm bg-white border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50 text-slate-700 shadow-sm">
+        <svg viewBox="0 0 20 20" fill="none" class="w-4 h-4 text-brand shrink-0"><path d="M6 2.5h5.5L15 6v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M11 2.5V6h4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+        Reporte PDF
+      </button>
       <button id="export-excel-btn" class="inline-flex items-center gap-1.5 text-sm bg-white border border-slate-300 rounded-lg px-3 py-1.5 hover:bg-slate-50 text-slate-700 shadow-sm">
         <svg viewBox="0 0 20 20" fill="none" class="w-4 h-4 text-brand shrink-0"><path d="M10 3v9m0 0 3.5-3.5M10 12l-3.5-3.5M4 14.5V16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Exportar a Excel
+        Excel
       </button>
     </div>
 
@@ -192,9 +205,11 @@
     </div>
 
     <!-- Tabs -->
-    <div class="flex gap-2 mb-4">
-      <button id="tab-gastos-btn" class="tab-btn flex-1 rounded-lg py-2 text-sm font-medium bg-brand text-white">Gastos</button>
-      <button id="tab-entradas-btn" class="tab-btn flex-1 rounded-lg py-2 text-sm font-medium bg-white border border-slate-300 text-slate-600">Entradas</button>
+    <div class="flex gap-2 mb-4 overflow-x-auto -mx-4 px-4" style="scrollbar-width:none">
+      <button id="tab-gastos-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-brand text-white">Gastos</button>
+      <button id="tab-entradas-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Entradas</button>
+      <button id="tab-documentos-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Documentos</button>
+      <button id="tab-bitacora-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Bitácora</button>
     </div>
 
     <!-- ===== Panel de gastos ===== -->
@@ -232,6 +247,30 @@
       </div>
       <div id="lista-entradas" class="space-y-2"></div>
       <p id="lista-entradas-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Aún no hay entradas registradas.</p>
+    </div>
+
+    <!-- ===== Panel de documentos ===== -->
+    <div id="panel-documentos" class="hidden">
+      <p class="text-xs text-slate-500 mb-3">Contratos, permisos, planos o cualquier archivo del proyecto.</p>
+      <div class="flex justify-end mb-3">
+        <button id="documento-add-open-btn" class="bg-brand text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-brand-dark shadow-sm">
+          + Subir documento
+        </button>
+      </div>
+      <div id="lista-documentos" class="space-y-2"></div>
+      <p id="lista-documentos-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Aún no hay documentos subidos.</p>
+    </div>
+
+    <!-- ===== Panel de bitácora de avance ===== -->
+    <div id="panel-bitacora" class="hidden">
+      <p class="text-xs text-slate-500 mb-3">Registro de avance de la obra con fotos y notas, por fecha.</p>
+      <div class="flex justify-end mb-3">
+        <button id="bitacora-add-open-btn" class="bg-brand text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-brand-dark shadow-sm">
+          + Nuevo avance
+        </button>
+      </div>
+      <div id="lista-bitacora" class="space-y-3"></div>
+      <p id="lista-bitacora-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Aún no hay avances registrados.</p>
     </div>
   </main>
 
@@ -394,6 +433,155 @@
           Eliminar
         </button>
       </div>
+    </form>
+  </main>
+</div>
+
+<!-- ===================== DIRECTORIO DE PROVEEDORES ===================== -->
+<div id="view-proveedores" class="view">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+      <button id="proveedores-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <h1 class="text-lg font-bold text-slate-900">Proveedores</h1>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-4 pb-24">
+    <p class="text-sm text-slate-500 mb-3">Directorio de contactos y proveedores, con lo que les has pagado en total.</p>
+
+    <div id="lista-proveedores" class="space-y-2 mb-4"></div>
+    <p id="proveedores-vacio" class="text-center text-slate-400 text-sm py-3 hidden">Aún no has agregado proveedores.</p>
+
+    <div class="border-t border-slate-200 pt-4">
+      <h2 id="proveedor-form-title" class="text-sm font-semibold text-slate-700 mb-3">Agregar proveedor</h2>
+      <form id="form-proveedor" class="space-y-3">
+        <input type="hidden" id="proveedor-id" />
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Nombre / empresa</label>
+          <input id="proveedor-nombre" type="text" required placeholder="Ej. Materiales del Norte"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Partida</label>
+          <select id="proveedor-categoria" class="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+            <option value="">— Ninguna —</option>
+          </select>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Contacto</label>
+            <input id="proveedor-contacto" type="text" placeholder="Nombre de contacto"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-1">Teléfono</label>
+            <input id="proveedor-telefono" type="tel" placeholder="Ej. 667 123 4567"
+              class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Notas</label>
+          <textarea id="proveedor-notas" rows="2" placeholder="Ej. tardado pero buen precio"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2.5"></textarea>
+        </div>
+        <p id="proveedor-form-error" class="text-red-600 text-sm hidden"></p>
+        <div class="flex gap-2">
+          <button type="submit" id="proveedor-save-btn"
+            class="flex-1 bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark">
+            Guardar
+          </button>
+          <button type="button" id="proveedor-cancel-btn"
+            class="hidden px-4 rounded-lg border border-slate-300 hover:bg-slate-50">
+            Cancelar
+          </button>
+          <button type="button" id="proveedor-delete-btn"
+            class="hidden px-4 rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
+            Eliminar
+          </button>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<!-- ===================== SUBIR DOCUMENTO ===================== -->
+<div id="view-documento-form" class="view">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+      <button id="documento-form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <h1 class="text-lg font-bold text-slate-900">Subir documento</h1>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-4 pb-24">
+    <form id="form-documento" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Proyecto</label>
+        <select id="documento-proyecto" required class="w-full rounded-lg border border-slate-300 px-3 py-2.5"></select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Nombre del documento</label>
+        <input id="documento-nombre" type="text" required placeholder="Ej. Contrato de obra"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Tipo</label>
+        <select id="documento-tipo" class="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+          <option>Contrato</option>
+          <option>Permiso</option>
+          <option>Plano</option>
+          <option>Cotización</option>
+          <option>Otro</option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Archivo (foto o PDF)</label>
+        <input id="documento-archivo" type="file" accept="image/*,application/pdf" required class="w-full text-sm" />
+        <p class="text-xs text-slate-400 mt-1">Necesitas conexión a internet para subir el archivo.</p>
+      </div>
+      <p id="documento-form-error" class="text-red-600 text-sm hidden"></p>
+      <button type="submit" id="documento-save-btn"
+        class="w-full bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark">
+        Subir
+      </button>
+    </form>
+  </main>
+</div>
+
+<!-- ===================== NUEVO AVANCE (BITÁCORA) ===================== -->
+<div id="view-bitacora-form" class="view">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+      <button id="bitacora-form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <h1 class="text-lg font-bold text-slate-900">Nuevo avance</h1>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-4 pb-24">
+    <form id="form-bitacora" class="space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Proyecto</label>
+        <select id="bitacora-proyecto" required class="w-full rounded-lg border border-slate-300 px-3 py-2.5"></select>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
+        <input id="bitacora-fecha" type="date" required class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Nota</label>
+        <textarea id="bitacora-nota" rows="3" placeholder="Ej. Se coló la losa de la planta alta"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2.5"></textarea>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Fotos</label>
+        <input id="bitacora-fotos" type="file" accept="image/*" capture="environment" multiple class="w-full text-sm" />
+        <p class="text-xs text-slate-400 mt-1">Puedes elegir varias fotos a la vez. Necesitas conexión para subirlas — si no hay internet, se guarda solo la nota y puedes agregar las fotos después editando.</p>
+      </div>
+      <p id="bitacora-form-error" class="text-red-600 text-sm hidden"></p>
+      <button type="submit" id="bitacora-save-btn"
+        class="w-full bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark">
+        Guardar
+      </button>
     </form>
   </main>
 </div>

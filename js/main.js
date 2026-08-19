@@ -9,6 +9,8 @@
     proyectos: [],
     gastos: [],
     entradas: [],
+    documentos: [],
+    bitacora: [],
     currentUser: localStorage.getItem("romor_user") || null,
     // "Último proyecto usado": solo se usa para pre-seleccionar el proyecto
     // al crear un gasto/entrada nuevo. Ya NO bloquea el acceso al dashboard.
@@ -35,6 +37,95 @@
       (isError ? "bg-red-600" : "bg-slate-900");
     setTimeout(() => (t.className += " hidden"), 3000);
   }
+
+  // -------------------- MODO SIN INTERNET (PWA + cola local) --------------------
+  // Registra el service worker: hace que el "cascarón" de la app (HTML/CSS/JS,
+  // logo, fuentes) cargue aunque no haya internet. Los datos siguen yendo
+  // siempre directo a Supabase (ver sw.js).
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker
+        .register("sw.js")
+        .catch((err) => console.warn("No se pudo registrar el service worker:", err));
+    });
+  }
+
+  const OUTBOX_KEY = "romor_outbox";
+
+  function getOutbox() {
+    try {
+      return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]");
+    } catch (err) {
+      return [];
+    }
+  }
+
+  function setOutbox(items) {
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(items));
+  }
+
+  // Guarda en una cola local (localStorage) un gasto/entrada/nota de bitácora
+  // nuevo capturado sin internet, para subirlo solo en cuanto vuelva la conexión.
+  function queueOutbox(tipo, payload) {
+    const items = getOutbox();
+    const localId = "local-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+    items.push({ localId, tipo, payload, creadoEn: new Date().toISOString() });
+    setOutbox(items);
+    updateOfflineBanner();
+    return localId;
+  }
+
+  async function trySyncOutbox() {
+    if (!navigator.onLine) return;
+    const items = getOutbox();
+    if (items.length === 0) return;
+    const restantes = [];
+    let subidos = 0;
+    for (const item of items) {
+      try {
+        if (item.tipo === "gasto") {
+          await DATA.saveGasto(item.payload, null);
+        } else if (item.tipo === "entrada") {
+          await DATA.saveEntrada(item.payload, null);
+        } else if (item.tipo === "bitacora") {
+          await DATA.addBitacoraEntry(item.payload);
+        }
+        subidos++;
+      } catch (err) {
+        console.warn("No se pudo sincronizar un registro pendiente:", err);
+        restantes.push(item);
+      }
+    }
+    setOutbox(restantes);
+    updateOfflineBanner();
+    if (subidos > 0) {
+      toast(`${subidos} registro(s) pendiente(s) sincronizado(s)`);
+      if (state.currentUser) await refreshAll();
+    }
+  }
+
+  function updateOfflineBanner() {
+    const banner = $("offline-banner");
+    if (!banner) return;
+    const pendientes = getOutbox().length;
+    if (!navigator.onLine) {
+      banner.textContent = "📡 Sin conexión — lo que agregues se guardará y se subirá cuando vuelva el internet.";
+      banner.classList.remove("hidden");
+    } else if (pendientes > 0) {
+      banner.textContent = `📡 Sincronizando ${pendientes} registro(s) pendiente(s)...`;
+      banner.classList.remove("hidden");
+    } else {
+      banner.classList.add("hidden");
+    }
+  }
+
+  window.addEventListener("online", () => {
+    updateOfflineBanner();
+    trySyncOutbox();
+  });
+  window.addEventListener("offline", () => {
+    updateOfflineBanner();
+  });
 
   // -------------------- AUTH --------------------
   async function init() {
@@ -106,6 +197,8 @@
 
   async function afterLogin() {
     await loadCatalogs();
+    updateOfflineBanner();
+    trySyncOutbox();
     if (!state.currentUser || !state.integrantes.find((i) => i.nombre === state.currentUser)) {
       showNameView();
     } else {
@@ -249,6 +342,149 @@
     }
   });
 
+  // -------------------- PROVEEDORES (directorio) --------------------
+  $("open-proveedores-btn").addEventListener("click", () => {
+    openProveedoresView();
+  });
+
+  $("proveedores-back-btn").addEventListener("click", () => {
+    showView("dashboard");
+  });
+
+  async function openProveedoresView() {
+    try {
+      state.proveedores = await DATA.getProveedores();
+    } catch (err) {
+      toast("Error cargando proveedores: " + err.message, true);
+    }
+    resetProveedorForm();
+    renderProveedoresList();
+    showView("proveedores");
+  }
+
+  function totalPagadoProveedor(proveedorId) {
+    return state.gastos.filter((g) => g.proveedor_id === proveedorId).reduce((s, g) => s + Number(g.monto), 0);
+  }
+
+  function renderProveedoresList() {
+    const cont = $("lista-proveedores");
+    $("proveedores-vacio").classList.toggle("hidden", state.proveedores.length > 0);
+    cont.innerHTML = state.proveedores
+      .map((p) => {
+        const categoria = state.categorias.find((c) => c.id === p.categoria_id)?.nombre || "";
+        const total = totalPagadoProveedor(p.id);
+        const tel = (p.telefono || "").replace(/[^0-9]/g, "");
+        return `
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+        <div class="flex justify-between items-start gap-2">
+          <button data-id="${p.id}" class="proveedor-edit-item text-left min-w-0 flex-1">
+            <p class="font-medium text-slate-900 truncate">${esc(p.nombre_empresa)}</p>
+            <p class="text-xs text-slate-500 truncate">${esc(categoria)}${p.contacto ? " · " + esc(p.contacto) : ""}</p>
+            ${p.telefono ? `<p class="text-xs text-slate-400">${esc(p.telefono)}</p>` : ""}
+          </button>
+          <div class="text-right shrink-0">
+            <p class="text-xs text-slate-400">Pagado</p>
+            <p class="font-semibold text-slate-900">${fmt(total)}</p>
+          </div>
+        </div>
+        ${
+          tel
+            ? `<a href="https://wa.me/${esc(tel)}" target="_blank" rel="noopener" class="mt-2 inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 rounded-full px-2.5 py-1">💬 WhatsApp</a>`
+            : ""
+        }
+      </div>`;
+      })
+      .join("");
+    cont.querySelectorAll(".proveedor-edit-item").forEach((el) => {
+      el.addEventListener("click", () => openProveedorForEdit(el.dataset.id));
+    });
+  }
+
+  function categoriaOptionsProveedor(selectedId) {
+    return (
+      '<option value="">— Sin categoría —</option>' +
+      state.categorias.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("")
+    );
+  }
+
+  function resetProveedorForm() {
+    $("proveedor-form-title").textContent = "Agregar proveedor";
+    $("proveedor-id").value = "";
+    $("proveedor-nombre").value = "";
+    $("proveedor-categoria").innerHTML = categoriaOptionsProveedor();
+    $("proveedor-categoria").value = "";
+    $("proveedor-contacto").value = "";
+    $("proveedor-telefono").value = "";
+    $("proveedor-notas").value = "";
+    $("proveedor-form-error").classList.add("hidden");
+    $("proveedor-cancel-btn").classList.add("hidden");
+    $("proveedor-delete-btn").classList.add("hidden");
+  }
+
+  function openProveedorForEdit(id) {
+    const p = state.proveedores.find((x) => x.id === id);
+    if (!p) return;
+    $("proveedor-form-title").textContent = "Editar proveedor";
+    $("proveedor-id").value = p.id;
+    $("proveedor-nombre").value = p.nombre_empresa || "";
+    $("proveedor-categoria").innerHTML = categoriaOptionsProveedor();
+    $("proveedor-categoria").value = p.categoria_id || "";
+    $("proveedor-contacto").value = p.contacto || "";
+    $("proveedor-telefono").value = p.telefono || "";
+    $("proveedor-notas").value = p.notas || "";
+    $("proveedor-form-error").classList.add("hidden");
+    $("proveedor-cancel-btn").classList.remove("hidden");
+    $("proveedor-delete-btn").classList.remove("hidden");
+  }
+
+  $("proveedor-cancel-btn").addEventListener("click", () => resetProveedorForm());
+
+  $("form-proveedor").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("proveedor-form-error").classList.add("hidden");
+    const btn = $("proveedor-save-btn");
+    btn.disabled = true;
+    btn.textContent = "Guardando...";
+    try {
+      const nombre = $("proveedor-nombre").value.trim();
+      if (!nombre) throw new Error("El nombre de la empresa es obligatorio.");
+      const payload = {
+        nombre_empresa: nombre,
+        categoria_id: $("proveedor-categoria").value || null,
+        contacto: $("proveedor-contacto").value.trim() || null,
+        telefono: $("proveedor-telefono").value.trim() || null,
+        notas: $("proveedor-notas").value.trim() || null,
+      };
+      const id = $("proveedor-id").value || null;
+      await DATA.saveProveedor(payload, id);
+      state.proveedores = await DATA.getProveedores();
+      toast(id ? "Proveedor actualizado" : "Proveedor agregado");
+      resetProveedorForm();
+      renderProveedoresList();
+    } catch (err) {
+      $("proveedor-form-error").textContent = "Error al guardar: " + err.message;
+      $("proveedor-form-error").classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Guardar";
+    }
+  });
+
+  $("proveedor-delete-btn").addEventListener("click", async () => {
+    const id = $("proveedor-id").value;
+    if (!id) return;
+    if (!confirm("¿Eliminar este proveedor? Esta acción no se puede deshacer.")) return;
+    try {
+      await DATA.deleteProveedor(id);
+      state.proveedores = await DATA.getProveedores();
+      toast("Proveedor eliminado");
+      resetProveedorForm();
+      renderProveedoresList();
+    } catch (err) {
+      toast("Error al eliminar: " + err.message, true);
+    }
+  });
+
   // -------------------- DASHBOARD --------------------
   async function goToDashboard() {
     $("current-user-label").textContent = state.currentUser;
@@ -259,12 +495,19 @@
 
   async function refreshAll() {
     try {
-      // Traemos TODOS los gastos/entradas (de todos los proyectos) y filtramos
-      // en el cliente — así la vista general y el filtro por proyecto no
-      // requieren volver a pedir datos al servidor.
-      const [gastos, entradas] = await Promise.all([DATA.getGastos(), DATA.getEntradas()]);
+      // Traemos TODOS los gastos/entradas/documentos/bitácora (de todos los
+      // proyectos) y filtramos en el cliente — así la vista general y el
+      // filtro por proyecto no requieren volver a pedir datos al servidor.
+      const [gastos, entradas, documentos, bitacora] = await Promise.all([
+        DATA.getGastos(),
+        DATA.getEntradas(),
+        DATA.getDocumentos(),
+        DATA.getBitacora(),
+      ]);
       state.gastos = gastos;
       state.entradas = entradas;
+      state.documentos = documentos;
+      state.bitacora = bitacora;
     } catch (err) {
       toast("Error cargando datos: " + err.message, true);
       return;
@@ -273,6 +516,8 @@
     renderResumen();
     renderLista();
     renderEntradasList();
+    renderDocumentosList();
+    renderBitacoraList();
   }
 
   // Compatibilidad: algunas partes del código piden solo refrescar gastos/entradas
@@ -292,6 +537,8 @@
     renderResumen();
     renderLista();
     renderEntradasList();
+    renderDocumentosList();
+    renderBitacoraList();
   });
 
   function gastosFiltrados() {
@@ -304,10 +551,45 @@
       : state.entradas;
   }
 
+  function documentosFiltrados() {
+    return state.filtroProyecto
+      ? state.documentos.filter((d) => d.proyecto_id === state.filtroProyecto)
+      : state.documentos;
+  }
+
+  function bitacoraFiltrada() {
+    return state.filtroProyecto
+      ? state.bitacora.filter((b) => b.proyecto_id === state.filtroProyecto)
+      : state.bitacora;
+  }
+
   // Proyecto a usar por defecto al crear un gasto/entrada nuevo: el que esté
   // filtrado en el dashboard, si no el último usado, si no el primero de la lista.
   function defaultProyectoId() {
     return state.filtroProyecto || state.currentProject?.id || state.proyectos[0]?.id || "";
+  }
+
+  // Inserta en el estado local, de forma optimista, un gasto/entrada capturado
+  // sin internet — así aparece de inmediato en la lista (con su etiqueta "⏳
+  // sin subir") mientras espera su turno en la cola local para subirse.
+  function addPendingGastoToState(payload, localId) {
+    state.gastos.unshift({
+      id: localId,
+      ...payload,
+      categorias: state.categorias.find((c) => c.id === payload.categoria_id) || null,
+      proveedores: state.proveedores.find((p) => p.id === payload.proveedor_id) || null,
+      proyectos: state.proyectos.find((p) => p.id === payload.proyecto_id) || null,
+      _pendiente: true,
+    });
+  }
+
+  function addPendingEntradaToState(payload, localId) {
+    state.entradas.unshift({
+      id: localId,
+      ...payload,
+      proyectos: state.proyectos.find((p) => p.id === payload.proyecto_id) || null,
+      _pendiente: true,
+    });
   }
 
   function renderFiltroCategoria() {
@@ -319,21 +601,24 @@
     sel.value = current;
   }
 
-  // -------------------- TABS GASTOS / ENTRADAS --------------------
+  // -------------------- TABS GASTOS / ENTRADAS / DOCUMENTOS / BITÁCORA --------------------
+  const TABS = ["gastos", "entradas", "documentos", "bitacora"];
   $("tab-gastos-btn").addEventListener("click", () => switchTab("gastos"));
   $("tab-entradas-btn").addEventListener("click", () => switchTab("entradas"));
+  $("tab-documentos-btn").addEventListener("click", () => switchTab("documentos"));
+  $("tab-bitacora-btn").addEventListener("click", () => switchTab("bitacora"));
 
   function switchTab(tab) {
-    const isGastos = tab === "gastos";
-    $("panel-gastos").classList.toggle("hidden", !isGastos);
-    $("panel-entradas").classList.toggle("hidden", isGastos);
-    $("tab-gastos-btn").className =
-      "tab-btn flex-1 rounded-lg py-2 text-sm font-medium " +
-      (isGastos ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
-    $("tab-entradas-btn").className =
-      "tab-btn flex-1 rounded-lg py-2 text-sm font-medium " +
-      (!isGastos ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
-    $("fab-add").classList.toggle("hidden", !isGastos);
+    TABS.forEach((t) => {
+      const active = t === tab;
+      $(`panel-${t}`).classList.toggle("hidden", !active);
+      $(`tab-${t}-btn`).className =
+        "tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium " +
+        (active ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
+    });
+    // El botón "+" flotante solo aplica a la lista de gastos; documentos y
+    // bitácora tienen su propio botón "+" arriba de su lista.
+    $("fab-add").classList.toggle("hidden", tab !== "gastos");
   }
 
   function renderResumen() {
@@ -433,11 +718,14 @@
           mostrarTodos && g.proyectos?.nombre
             ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(g.proyectos.nombre)}</span>`
             : "";
+        const pendienteTag = g._pendiente
+          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
+          : "";
         return `
-        <button data-id="${g.id}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
+        <button data-id="${g.id}" data-pendiente="${g._pendiente ? 1 : 0}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
           <div class="flex justify-between items-start">
             <div class="min-w-0 pr-2">
-              <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
+              <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
               <p class="text-xs text-slate-500 truncate">${esc(g.categorias?.nombre || "")}${proveedor ? " · " + esc(proveedor) : ""}</p>
               <p class="text-xs text-slate-400">${fmtFecha(g.fecha)} · ${esc(g.metodo_pago || "")}${g.pagado_por ? " · pagó " + esc(g.pagado_por) : ""}</p>
             </div>
@@ -450,7 +738,13 @@
       })
       .join("");
     cont.querySelectorAll(".gasto-item").forEach((el) => {
-      el.addEventListener("click", () => openForm(el.dataset.id));
+      el.addEventListener("click", () => {
+        if (el.dataset.pendiente === "1") {
+          toast("Este gasto se está subiendo, espera un momento antes de editarlo", true);
+          return;
+        }
+        openForm(el.dataset.id);
+      });
     });
   }
 
@@ -468,11 +762,14 @@
           mostrarTodos && e.proyectos?.nombre
             ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(e.proyectos.nombre)}</span>`
             : "";
+        const pendienteTag = e._pendiente
+          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
+          : "";
         return `
-      <button data-id="${e.id}" class="entrada-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
+      <button data-id="${e.id}" data-pendiente="${e._pendiente ? 1 : 0}" class="entrada-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
         <div class="flex justify-between items-start">
           <div class="min-w-0 pr-2">
-            <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(e.concepto || "Entrada")}</p>
+            <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${esc(e.concepto || "Entrada")}</p>
             <p class="text-xs text-slate-400">${fmtFecha(e.fecha)}${e.aportado_por ? " · aportó " + esc(e.aportado_por) : ""}</p>
           </div>
           <p class="font-semibold" style="color:#0ca30c">${fmt(e.monto)}</p>
@@ -481,7 +778,13 @@
       })
       .join("");
     cont.querySelectorAll(".entrada-item").forEach((el) => {
-      el.addEventListener("click", () => openEntradaForm(el.dataset.id));
+      el.addEventListener("click", () => {
+        if (el.dataset.pendiente === "1") {
+          toast("Esta entrada se está subiendo, espera un momento antes de editarla", true);
+          return;
+        }
+        openEntradaForm(el.dataset.id);
+      });
     });
   }
 
@@ -546,6 +849,20 @@
         notas: $("entrada-notas").value.trim() || null,
       };
       const id = $("entrada-id").value || null;
+
+      if (!navigator.onLine && !id) {
+        // Sin internet: guardamos la entrada en una cola local y se sube sola
+        // en cuanto vuelva la conexión (no requiere ningún archivo).
+        const localId = queueOutbox("entrada", payload);
+        if (proyectoId) rememberProyecto(proyectoId);
+        addPendingEntradaToState(payload, localId);
+        toast("Entrada guardada sin conexión — se subirá sola");
+        showView("dashboard");
+        renderResumen();
+        renderEntradasList();
+        return;
+      }
+
       await DATA.saveEntrada(payload, id);
       if (proyectoId) rememberProyecto(proyectoId);
       toast(id ? "Entrada actualizada" : "Entrada guardada");
@@ -571,6 +888,194 @@
       await refreshAll();
     } catch (err) {
       toast("Error al eliminar: " + err.message, true);
+    }
+  });
+
+  // -------------------- DOCUMENTOS DEL PROYECTO --------------------
+  function renderDocumentosList() {
+    const mostrarTodos = !state.filtroProyecto;
+    const documentos = documentosFiltrados();
+    const cont = $("lista-documentos");
+    $("lista-documentos-vacia").classList.toggle("hidden", documentos.length > 0);
+    cont.innerHTML = documentos
+      .map((d) => {
+        const proyectoTag =
+          mostrarTodos && d.proyectos?.nombre
+            ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(d.proyectos.nombre)}</span>`
+            : "";
+        return `
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex justify-between items-center gap-2">
+          <a href="${esc(d.url)}" target="_blank" rel="noopener" class="min-w-0 flex-1">
+            <p class="font-medium text-slate-900 truncate">${proyectoTag}📄 ${esc(d.nombre)}</p>
+            <p class="text-xs text-slate-500">${esc(d.tipo || "Documento")}${d.subido_por ? " · subió " + esc(d.subido_por) : ""}</p>
+          </a>
+          <button data-id="${d.id}" class="documento-delete-btn shrink-0 text-slate-400 hover:text-red-600 text-lg px-1">🗑️</button>
+        </div>`;
+      })
+      .join("");
+    cont.querySelectorAll(".documento-delete-btn").forEach((el) => {
+      el.addEventListener("click", async (ev) => {
+        ev.preventDefault();
+        if (!confirm("¿Eliminar este documento? Esta acción no se puede deshacer.")) return;
+        try {
+          await DATA.deleteDocumento(el.dataset.id);
+          state.documentos = state.documentos.filter((d) => d.id !== el.dataset.id);
+          toast("Documento eliminado");
+          renderDocumentosList();
+        } catch (err) {
+          toast("Error al eliminar: " + err.message, true);
+        }
+      });
+    });
+  }
+
+  $("documento-add-open-btn").addEventListener("click", () => openDocumentoForm());
+  $("documento-form-back-btn").addEventListener("click", () => showView("dashboard"));
+
+  function openDocumentoForm() {
+    $("documento-form-error").classList.add("hidden");
+    $("documento-proyecto").innerHTML = state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
+    $("documento-proyecto").value = defaultProyectoId();
+    $("documento-nombre").value = "";
+    $("documento-tipo").value = "Contrato";
+    $("documento-archivo").value = "";
+    showView("documento-form");
+  }
+
+  $("form-documento").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("documento-form-error").classList.add("hidden");
+    if (!navigator.onLine) {
+      $("documento-form-error").textContent = "Necesitas conexión a internet para subir un documento.";
+      $("documento-form-error").classList.remove("hidden");
+      return;
+    }
+    const btn = $("documento-save-btn");
+    btn.disabled = true;
+    btn.textContent = "Subiendo...";
+    try {
+      const file = $("documento-archivo").files[0];
+      if (!file) throw new Error("Selecciona un archivo.");
+      const up = await DATA.uploadComprobante(file);
+      const payload = {
+        proyecto_id: $("documento-proyecto").value || defaultProyectoId() || null,
+        nombre: $("documento-nombre").value.trim() || file.name,
+        tipo: $("documento-tipo").value || null,
+        url: up.url,
+        subido_por: state.currentUser,
+      };
+      await DATA.addDocumento(payload);
+      toast("Documento subido");
+      showView("dashboard");
+      state.documentos = await DATA.getDocumentos();
+      renderDocumentosList();
+    } catch (err) {
+      $("documento-form-error").textContent = "Error al subir: " + err.message;
+      $("documento-form-error").classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Subir";
+    }
+  });
+
+  // -------------------- BITÁCORA DE AVANCE --------------------
+  function renderBitacoraList() {
+    const mostrarTodos = !state.filtroProyecto;
+    const bitacora = bitacoraFiltrada();
+    const cont = $("lista-bitacora");
+    $("lista-bitacora-vacia").classList.toggle("hidden", bitacora.length > 0);
+    cont.innerHTML = bitacora
+      .map((b) => {
+        const proyectoTag =
+          mostrarTodos && b.proyectos?.nombre
+            ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(b.proyectos.nombre)}</span>`
+            : "";
+        const pendienteTag = b._pendiente
+          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
+          : "";
+        const fotos = (b.fotos || [])
+          .map(
+            (url) =>
+              `<a href="${esc(url)}" target="_blank" rel="noopener"><img src="${esc(url)}" class="w-16 h-16 object-cover rounded-lg border border-slate-200" /></a>`
+          )
+          .join("");
+        return `
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+          <p class="text-xs text-slate-400 mb-1">${proyectoTag}${pendienteTag}${fmtFecha(b.fecha)}${b.capturado_por ? " · " + esc(b.capturado_por) : ""}</p>
+          ${b.nota ? `<p class="text-sm text-slate-800 mb-2">${esc(b.nota)}</p>` : ""}
+          ${fotos ? `<div class="flex gap-2 flex-wrap">${fotos}</div>` : ""}
+        </div>`;
+      })
+      .join("");
+  }
+
+  $("bitacora-add-open-btn").addEventListener("click", () => openBitacoraForm());
+  $("bitacora-form-back-btn").addEventListener("click", () => showView("dashboard"));
+
+  function openBitacoraForm() {
+    $("bitacora-form-error").classList.add("hidden");
+    $("bitacora-proyecto").innerHTML = state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
+    $("bitacora-proyecto").value = defaultProyectoId();
+    $("bitacora-fecha").value = new Date().toISOString().slice(0, 10);
+    $("bitacora-nota").value = "";
+    $("bitacora-fotos").value = "";
+    showView("bitacora-form");
+  }
+
+  $("form-bitacora").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("bitacora-form-error").classList.add("hidden");
+    const btn = $("bitacora-save-btn");
+    btn.disabled = true;
+    btn.textContent = "Guardando...";
+    try {
+      const proyectoId = $("bitacora-proyecto").value || defaultProyectoId() || null;
+      const payload = {
+        proyecto_id: proyectoId,
+        fecha: $("bitacora-fecha").value,
+        nota: $("bitacora-nota").value.trim() || null,
+        fotos: [],
+        capturado_por: state.currentUser,
+      };
+      const files = Array.from($("bitacora-fotos").files || []);
+
+      if (!navigator.onLine) {
+        // Sin internet no se pueden subir fotos: se guarda solo la nota en la
+        // cola local y se sube en cuanto vuelva la conexión.
+        if (files.length > 0) {
+          toast("Sin internet: las fotos no se subieron, agrégalas después editando el avance", true);
+        }
+        const localId = queueOutbox("bitacora", payload);
+        if (proyectoId) rememberProyecto(proyectoId);
+        state.bitacora.unshift({
+          id: localId,
+          ...payload,
+          proyectos: state.proyectos.find((p) => p.id === proyectoId) || null,
+          _pendiente: true,
+        });
+        toast("Avance guardado sin conexión — se subirá solo");
+        showView("dashboard");
+        renderBitacoraList();
+        return;
+      }
+
+      if (files.length > 0) {
+        const subidas = await Promise.all(files.map((f) => DATA.uploadComprobante(f)));
+        payload.fotos = subidas.map((s) => s.url);
+      }
+
+      await DATA.addBitacoraEntry(payload);
+      if (proyectoId) rememberProyecto(proyectoId);
+      toast("Avance guardado");
+      showView("dashboard");
+      state.bitacora = await DATA.getBitacora();
+      renderBitacoraList();
+    } catch (err) {
+      $("bitacora-form-error").textContent = "Error al guardar: " + err.message;
+      $("bitacora-form-error").classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Guardar";
     }
   });
 
@@ -623,6 +1128,155 @@
       XLSX.writeFile(wb, `gastos_${nombreProyecto}.xlsx`);
     } catch (err) {
       toast("No se pudo exportar: " + err.message, true);
+    }
+  });
+
+  // -------------------- EXPORTAR REPORTE PDF --------------------
+  async function imageUrlToDataURL(url) {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    return await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  $("export-pdf-btn").addEventListener("click", async () => {
+    const btn = $("export-pdf-btn");
+    btn.disabled = true;
+    try {
+      const mostrarTodos = !state.filtroProyecto;
+      const gastos = gastosFiltrados();
+      const entradas = entradasFiltradas();
+      const totalGastos = gastos.reduce((s, g) => s + Number(g.monto), 0);
+      const totalEntradas = entradas.reduce((s, e) => s + Number(e.monto), 0);
+      const saldo = totalEntradas - totalGastos;
+      const nombreProyecto = mostrarTodos
+        ? "Todos los proyectos"
+        : state.proyectos.find((p) => p.id === state.filtroProyecto)?.nombre || "Proyecto";
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "pt" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 40;
+      let y = 50;
+
+      try {
+        const logoData = await imageUrlToDataURL("assets/logo.png");
+        doc.addImage(logoData, "PNG", marginX, 24, 90, 27);
+      } catch (err) {
+        console.warn("No se pudo cargar el logo para el PDF:", err);
+      }
+
+      doc.setFontSize(16);
+      doc.setTextColor(20, 20, 20);
+      doc.text("Reporte de gastos de obra", pageWidth - marginX, 38, { align: "right" });
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(nombreProyecto, pageWidth - marginX, 54, { align: "right" });
+      doc.text("Generado el " + new Date().toLocaleDateString("es-MX"), pageWidth - marginX, 68, { align: "right" });
+
+      y = 96;
+      doc.setDrawColor(219, 0, 46);
+      doc.setLineWidth(1);
+      doc.line(marginX, y, pageWidth - marginX, y);
+      y += 24;
+
+      doc.setFontSize(11);
+      doc.setTextColor(30, 30, 30);
+      doc.text(`Total entradas: ${fmt(totalEntradas)}`, marginX, y);
+      y += 16;
+      doc.text(`Total gastos: ${fmt(totalGastos)}`, marginX, y);
+      y += 16;
+      doc.setTextColor(...(saldo >= 0 ? [12, 163, 12] : [208, 59, 59]));
+      doc.text(`Saldo: ${fmt(saldo)}`, marginX, y);
+      doc.setTextColor(30, 30, 30);
+      y += 26;
+
+      const porCategoria = {};
+      for (const g of gastos) {
+        const nombre = g.categorias?.nombre || "Sin categoría";
+        porCategoria[nombre] = (porCategoria[nombre] || 0) + Number(g.monto);
+      }
+      const filasCategoria = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]);
+      if (filasCategoria.length > 0) {
+        doc.setFontSize(12);
+        doc.text("Gasto por partida", marginX, y);
+        y += 8;
+        doc.autoTable({
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [["Partida", "Monto"]],
+          body: filasCategoria.map(([nombre, monto]) => [nombre, fmt(monto)]),
+          theme: "striped",
+          headStyles: { fillColor: [219, 0, 46] },
+          styles: { fontSize: 9 },
+        });
+        y = doc.lastAutoTable.finalY + 26;
+      }
+
+      const gastosHead = mostrarTodos
+        ? ["Proyecto", "Fecha", "Partida", "Proveedor", "Descripción", "Monto"]
+        : ["Fecha", "Partida", "Proveedor", "Descripción", "Monto"];
+      const gastosBody = gastos.map((g) => {
+        const row = [fmtFecha(g.fecha), g.categorias?.nombre || "", g.proveedores?.nombre_empresa || g.proveedor_texto || "", g.descripcion || "", fmt(g.monto)];
+        if (mostrarTodos) row.unshift(g.proyectos?.nombre || "");
+        return row;
+      });
+      if (gastosBody.length > 0) {
+        if (y > pageHeight - 100) {
+          doc.addPage();
+          y = 50;
+        }
+        doc.setFontSize(12);
+        doc.text("Gastos", marginX, y);
+        y += 8;
+        doc.autoTable({
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [gastosHead],
+          body: gastosBody,
+          theme: "striped",
+          headStyles: { fillColor: [219, 0, 46] },
+          styles: { fontSize: 8 },
+        });
+        y = doc.lastAutoTable.finalY + 26;
+      }
+
+      const entradasHead = mostrarTodos ? ["Proyecto", "Fecha", "Concepto", "Aportó", "Monto"] : ["Fecha", "Concepto", "Aportó", "Monto"];
+      const entradasBody = entradas.map((e) => {
+        const row = [fmtFecha(e.fecha), e.concepto || "", e.aportado_por || "", fmt(e.monto)];
+        if (mostrarTodos) row.unshift(e.proyectos?.nombre || "");
+        return row;
+      });
+      if (entradasBody.length > 0) {
+        if (y > pageHeight - 100) {
+          doc.addPage();
+          y = 50;
+        }
+        doc.setFontSize(12);
+        doc.text("Entradas", marginX, y);
+        y += 8;
+        doc.autoTable({
+          startY: y,
+          margin: { left: marginX, right: marginX },
+          head: [entradasHead],
+          body: entradasBody,
+          theme: "striped",
+          headStyles: { fillColor: [219, 0, 46] },
+          styles: { fontSize: 8 },
+        });
+      }
+
+      const nombreArchivo = mostrarTodos ? "todos_los_proyectos" : nombreProyecto.replace(/[^a-z0-9]+/gi, "_");
+      doc.save(`reporte_${nombreArchivo}.pdf`);
+    } catch (err) {
+      toast("No se pudo generar el PDF: " + err.message, true);
+    } finally {
+      btn.disabled = false;
     }
   });
 
@@ -734,14 +1388,32 @@
         notas: $("gasto-notas").value.trim() || null,
       };
 
+      const id = $("gasto-id").value || null;
       const file = $("gasto-comprobante").files[0];
+
+      if (!navigator.onLine && !id) {
+        // Sin internet no se puede subir el comprobante (requiere red); se
+        // guarda el gasto en una cola local y se sube solo en cuanto vuelva
+        // la conexión. El comprobante se puede agregar después editando.
+        if (file) {
+          toast("Sin internet: el comprobante no se subió, agrégalo después editando el gasto", true);
+        }
+        const localId = queueOutbox("gasto", payload);
+        if (proyectoId) rememberProyecto(proyectoId);
+        addPendingGastoToState(payload, localId);
+        toast("Gasto guardado sin conexión — se subirá solo");
+        showView("dashboard");
+        renderResumen();
+        renderLista();
+        return;
+      }
+
       if (file) {
         const up = await DATA.uploadComprobante(file);
         payload.comprobante_url = up.url;
         payload.comprobante_nombre = up.nombre;
       }
 
-      const id = $("gasto-id").value || null;
       await DATA.saveGasto(payload, id);
       if (proyectoId) rememberProyecto(proyectoId);
       toast(id ? "Gasto actualizado" : "Gasto guardado");

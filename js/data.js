@@ -20,6 +20,23 @@ window.DATA = (function () {
     return data;
   }
 
+  async function saveProveedor(proveedor, id) {
+    if (id) {
+      const { data, error } = await sb.from("proveedores").update(proveedor).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await sb.from("proveedores").insert(proveedor).select().single();
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  async function deleteProveedor(id) {
+    const { error } = await sb.from("proveedores").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   async function getProyectos() {
     const { data, error } = await sb
       .from("proyectos")
@@ -152,9 +169,55 @@ window.DATA = (function () {
     return { url: pub.publicUrl, nombre: file.name };
   }
 
+  // -------------------- DOCUMENTOS --------------------
+  async function getDocumentos(proyectoId) {
+    let q = sb.from("documentos").select("*, proyectos(nombre)").order("created_at", { ascending: false });
+    if (proyectoId) q = q.eq("proyecto_id", proyectoId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data;
+  }
+
+  async function addDocumento(documento) {
+    const { data, error } = await sb.from("documentos").insert(documento).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function deleteDocumento(id) {
+    const { error } = await sb.from("documentos").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  // -------------------- BITÁCORA DE AVANCE --------------------
+  async function getBitacora(proyectoId) {
+    let q = sb
+      .from("bitacora")
+      .select("*, proyectos(nombre)")
+      .order("fecha", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (proyectoId) q = q.eq("proyecto_id", proyectoId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data;
+  }
+
+  async function addBitacoraEntry(entrada) {
+    const { data, error } = await sb.from("bitacora").insert(entrada).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function deleteBitacoraEntry(id) {
+    const { error } = await sb.from("bitacora").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   return {
     getCategorias,
     getProveedores,
+    saveProveedor,
+    deleteProveedor,
     getProyectos,
     addProyecto,
     getIntegrantes,
@@ -168,5 +231,11 @@ window.DATA = (function () {
     saveEntrada,
     deleteEntrada,
     uploadComprobante,
+    getDocumentos,
+    addDocumento,
+    deleteDocumento,
+    getBitacora,
+    addBitacoraEntry,
+    deleteBitacoraEntry,
   };
 })();

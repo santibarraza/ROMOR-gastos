@@ -289,14 +289,50 @@
     cont.innerHTML = state.proyectos
       .map(
         (p) => `
-      <button data-id="${p.id}" class="proyecto-item w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5 flex justify-between items-center transition">
-        <span class="font-medium text-slate-800">${esc(p.nombre)}</span>
-        <span class="text-slate-400">→</span>
-      </button>`
+      <div class="proyecto-item w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5 flex justify-between items-center transition">
+        <button data-id="${p.id}" class="proyecto-select-btn flex-1 min-w-0 text-left flex items-center gap-2">
+          <span class="font-medium text-slate-800 truncate">${esc(p.nombre)}</span>
+        </button>
+        <button data-id="${p.id}" data-nombre="${esc(p.nombre)}" class="proyecto-delete-btn shrink-0 text-slate-400 hover:text-red-600 text-lg px-1 leading-none" title="Eliminar proyecto">🗑️</button>
+        <span class="text-slate-400 ml-1">→</span>
+      </div>`
       )
       .join("");
-    cont.querySelectorAll(".proyecto-item").forEach((el) => {
+    cont.querySelectorAll(".proyecto-select-btn").forEach((el) => {
       el.addEventListener("click", () => selectProyectoFiltro(el.dataset.id));
+    });
+    cont.querySelectorAll(".proyecto-delete-btn").forEach((el) => {
+      el.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        const id = el.dataset.id;
+        const nombre = el.dataset.nombre;
+        const nGastos = state.gastos.filter((g) => g.proyecto_id === id).length;
+        const nEntradas = state.entradas.filter((e) => e.proyecto_id === id).length;
+        const nDocumentos = state.documentos.filter((d) => d.proyecto_id === id).length;
+        const nBitacora = state.bitacora.filter((b) => b.proyecto_id === id).length;
+        const detalle =
+          nGastos || nEntradas || nDocumentos || nBitacora
+            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s) y ${nBitacora} avance(s) de bitácora de este proyecto.`
+            : " Este proyecto no tiene gastos, entradas, documentos ni avances de bitácora registrados.";
+        if (!confirm(`¿Eliminar el proyecto "${nombre}"?${detalle} Esta acción no se puede deshacer.`)) return;
+        try {
+          await DATA.deleteProyecto(id);
+          state.proyectos = state.proyectos.filter((p) => p.id !== id);
+          state.gastos = state.gastos.filter((g) => g.proyecto_id !== id);
+          state.entradas = state.entradas.filter((e) => e.proyecto_id !== id);
+          state.documentos = state.documentos.filter((d) => d.proyecto_id !== id);
+          state.bitacora = state.bitacora.filter((b) => b.proyecto_id !== id);
+          if (state.filtroProyecto === id) state.filtroProyecto = "";
+          if (state.currentProject?.id === id) {
+            state.currentProject = null;
+            localStorage.removeItem("romor_project");
+          }
+          toast("Proyecto eliminado");
+          renderProyectosList();
+        } catch (err) {
+          toast("Error al eliminar: " + err.message, true);
+        }
+      });
     });
   }
 
@@ -1001,12 +1037,37 @@
           .join("");
         return `
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-          <p class="text-xs text-slate-400 mb-1">${proyectoTag}${pendienteTag}${fmtFecha(b.fecha)}${b.capturado_por ? " · " + esc(b.capturado_por) : ""}</p>
+          <div class="flex justify-between items-start gap-2">
+            <p class="text-xs text-slate-400 mb-1">${proyectoTag}${pendienteTag}${fmtFecha(b.fecha)}${b.capturado_por ? " · " + esc(b.capturado_por) : ""}</p>
+            <button data-id="${esc(b.id)}" class="bitacora-delete-btn shrink-0 text-slate-400 hover:text-red-600 text-lg px-1 leading-none">🗑️</button>
+          </div>
           ${b.nota ? `<p class="text-sm text-slate-800 mb-2">${esc(b.nota)}</p>` : ""}
           ${fotos ? `<div class="flex gap-2 flex-wrap">${fotos}</div>` : ""}
         </div>`;
       })
       .join("");
+    cont.querySelectorAll(".bitacora-delete-btn").forEach((el) => {
+      el.addEventListener("click", async () => {
+        if (!confirm("¿Eliminar este avance de bitácora? Esta acción no se puede deshacer.")) return;
+        const id = el.dataset.id;
+        const entrada = state.bitacora.find((b) => b.id === id);
+        try {
+          if (entrada?._pendiente) {
+            // Todavía no se subió a Supabase (esperando conexión) — solo hay
+            // que quitarlo de la cola local y del estado.
+            setOutbox(getOutbox().filter((item) => item.localId !== id));
+            updateOfflineBanner();
+          } else {
+            await DATA.deleteBitacoraEntry(id);
+          }
+          state.bitacora = state.bitacora.filter((b) => b.id !== id);
+          toast("Avance eliminado");
+          renderBitacoraList();
+        } catch (err) {
+          toast("Error al eliminar: " + err.message, true);
+        }
+      });
+    });
   }
 
   $("bitacora-add-open-btn").addEventListener("click", () => openBitacoraForm());

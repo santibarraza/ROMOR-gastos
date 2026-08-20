@@ -264,6 +264,27 @@
     <!-- ===== Panel de bitácora de avance ===== -->
     <div id="panel-bitacora" class="hidden">
       <p class="text-xs text-slate-500 mb-3">Registro de avance de la obra con fotos y notas, por fecha.</p>
+
+      <!-- Reporte PDF por rango de fechas -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-3">
+        <p class="text-xs font-semibold text-slate-700 mb-2">Reporte PDF de bitácora</p>
+        <div class="flex flex-wrap items-end gap-2">
+          <div>
+            <label class="block text-[11px] text-slate-500 mb-1">Desde</label>
+            <input id="bitacora-pdf-desde" type="date" class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+          </div>
+          <div>
+            <label class="block text-[11px] text-slate-500 mb-1">Hasta</label>
+            <input id="bitacora-pdf-hasta" type="date" class="rounded-lg border border-slate-300 px-2 py-1.5 text-sm" />
+          </div>
+          <button id="bitacora-pdf-btn" class="inline-flex items-center gap-1.5 text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 hover:bg-slate-50 text-slate-700 shadow-sm">
+            <svg viewBox="0 0 20 20" fill="none" class="w-4 h-4 text-brand shrink-0"><path d="M6 2.5h5.5L15 6v10a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M11 2.5V6h4" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            Generar PDF
+          </button>
+        </div>
+        <p class="text-[11px] text-slate-400 mt-2">Deja las fechas vacías para incluir todos los avances.</p>
+      </div>
+
       <div class="flex justify-end mb-3">
         <button id="bitacora-add-open-btn" class="bg-brand text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-brand-dark shadow-sm">
           + Nuevo avance

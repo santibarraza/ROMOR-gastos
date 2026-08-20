@@ -185,6 +185,98 @@ Esta versión agrega 5 funciones nuevas a la app:
 
 ---
 
+## 6.6 Actualización: bitácora automática por WhatsApp
+
+Ahora puedes mandar fotos de avance de obra **directo por WhatsApp** y se agregan solas a la
+bitácora del proyecto correcto, sin abrir la app. Usa **Twilio** para recibir los mensajes (se
+eligió en vez de Meta directo porque se configura en minutos, sin verificación de negocio ni
+portafolios). Así funciona:
+
+1. Mandas al número de WhatsApp de Twilio una o varias fotos (las que quieras).
+2. Luego mandas un mensaje de texto que **empiece con el nombre exacto del proyecto,
+   seguido de dos puntos**, y después la nota del avance. Por ejemplo:
+   ```
+   Casa Romor: se coló la losa de la planta alta
+   ```
+3. En unos segundos te contesta por WhatsApp: **"✅ Bitácora agregada a Casa Romor con 4 foto(s)."**
+   Si no escribiste bien el nombre del proyecto, te lo dice y te recuerda los proyectos disponibles.
+
+Esto lo hace una funcioncita aparte (`api/whatsapp-bitacora.js`) que vive junto a la app en
+Vercel — no necesitas otro hosting. Pero **solo puede recibir mensajes de números de teléfono
+que tú registres primero** (por seguridad — si no, cualquiera que se entere del número podría
+meter fotos falsas a tu bitácora).
+
+> 💰 **Costo:** Twilio no es 100% gratis como el intento con Meta directo, pero es de centavos
+> de dólar por mensaje. Una cuenta nueva de Twilio trae créditos de prueba gratis (normalmente
+> alcanzan para cientos de mensajes) — para el uso diario de una bitácora de obra, el costo
+> mensual real debería ser mínimo (unos cuantos dólares al mes cuando mucho).
+
+### Pasos para activarlo
+
+**A) Crear la cuenta de Twilio y sacar tus credenciales**
+
+1. Entra a https://www.twilio.com/try-twilio y crea una cuenta (con tu correo, sin necesidad de
+   verificar ningún negocio).
+2. Ya adentro, en la página principal de la **Consola de Twilio** vas a ver tu **Account SID**
+   (empieza con `AC...`) y, justo debajo, tu **Auth Token** (dale clic a "Show" / el ojito para
+   verlo). Cópialos, los vas a usar en el paso C.
+
+**B) Activar el WhatsApp Sandbox (el número de prueba gratis)**
+
+1. En el buscador de la Consola de Twilio escribe **"WhatsApp sandbox"** o **"Try WhatsApp"** y
+   entra a esa sección (puede pedirte cambiar a la "Consola clásica" — es normal, Twilio todavía
+   maneja el Sandbox ahí).
+2. Vas a ver un número fijo de Twilio (normalmente **+1 415 523 8886**) y una palabra clave
+   única para tu cuenta (algo como `join palabra-ejemplo`).
+3. **Cada persona del equipo** que vaya a mandar bitácora tiene que, UNA sola vez, mandarle un
+   WhatsApp a ese número con el texto `join palabra-ejemplo` (la palabra exacta que te dio
+   Twilio) — Twilio les contesta confirmando que ya quedaron conectados al sandbox. Si alguien
+   deja de usarlo varios días, puede que le pida volver a mandar el "join" — no hay que
+   configurar nada de nuevo, solo reenviar ese mensaje.
+
+**C) Correr la migración de base de datos**
+
+1. Ve a Supabase → **SQL Editor** → **New query**.
+2. Copia y pega **todo** el contenido de `sql/migration_v4_whatsapp_bitacora.sql` de esta carpeta, y dale **Run**.
+   - Esto agrega la columna `telefono` a `integrantes` y crea la tabla `wa_bitacora_inbox` (el "buzón" temporal donde se guardan las fotos mientras llega el texto con el proyecto).
+3. En Supabase → **Table Editor → integrantes**, llena la columna `telefono` de cada persona con
+   su número en formato de país + número **con "+" y sin espacios** (ej. `+5216671234567` para
+   un celular de México) — así es como lo manda Twilio.
+
+**D) Configurar las variables de entorno en Vercel**
+
+1. En tu proyecto de Vercel, ve a **Settings → Environment Variables** y agrega estas 5:
+
+   | Variable | De dónde sacarla |
+   |---|---|
+   | `TWILIO_ACCOUNT_SID` | El "Account SID" del paso A2 (empieza con `AC...`). |
+   | `TWILIO_AUTH_TOKEN` | El "Auth Token" del paso A2. |
+   | `TWILIO_WEBHOOK_URL` | La URL pública completa de esta función, ej. `https://TU-DOMINIO-DE-VERCEL.vercel.app/api/whatsapp-bitacora` (cambia `TU-DOMINIO-DE-VERCEL` por el tuyo, sin "/" al final) — tiene que coincidir EXACTO con lo que pongas en el paso E. |
+   | `SUPABASE_URL` | La misma URL que ya usas en `js/config.js`. |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → **Project Settings → API → Project API keys → service_role** (la llave "secreta", NO la "anon" que usa la app — esta nunca debe ir en `js/config.js` ni en ningún archivo que subas a GitHub). |
+
+2. Sube **todos** los archivos de este paquete a GitHub (incluye la carpeta `api/` completa y `package.json`, ambos van en la **raíz** del repo). Vercel instala la dependencia de Twilio solo y vuelve a publicar.
+
+**E) Conectar el webhook**
+
+1. De vuelta en la sección del WhatsApp Sandbox de Twilio, busca **"Sandbox Configuration"**.
+2. En el campo **"WHEN A MESSAGE COMES IN"**, pega la misma URL que pusiste en `TWILIO_WEBHOOK_URL` (paso D1), con el método en **HTTP POST**.
+3. Guarda los cambios.
+
+**F) Probarlo**
+
+Desde el celular de alguien que ya se unió al sandbox en el paso B3, manda una foto, y luego un
+mensaje de texto como `Casa Romor: prueba de bitácora por WhatsApp`. Deberías recibir la
+confirmación en unos segundos, y ver la nueva entrada en la pestaña "Bitácora" de la app.
+
+### Cosas a tener en cuenta
+- Las fotos que mandes se agrupan por número de teléfono durante **3 horas** — si mandas fotos y tardas más de 3 horas en mandar el texto con el proyecto, esas fotos ya no se van a incluir (tendrías que volver a mandarlas). Para el uso normal (mandar todo junto en la obra) esto no debería pasarte nunca.
+- Los archivos que no sean fotos (audios, ubicación, stickers, etc.) se ignoran — te avisa que no los pudo usar, no truena nada.
+- Si alguien manda un mensaje desde un número que no registraste en el paso C3, la app le contesta pidiéndole que hable contigo para que lo agregues — no se guarda nada de ese número.
+- El Sandbox de Twilio es para probar — el día que quieras que cualquiera (no solo los que mandaron "join") le pueda escribir directo, se necesita pasar a un número de WhatsApp de Twilio "de verdad" (Twilio te guía con su propio proceso, que sí incluye verificar el negocio ante Meta, pero eso no es necesario para el uso diario del equipo).
+
+---
+
 ## 7. Cómo hacer cambios después
 
 - **Agregar categorías o proveedores nuevos:** en Supabase, ve a **Table Editor** → tabla `categorias` o `proveedores` → **Insert row**. No hace falta tocar código.
@@ -200,6 +292,8 @@ Esta versión agrega 5 funciones nuevas a la app:
 index.html                                  Toda la interfaz (login, nombre, proyectos, dashboard, formularios; Tailwind vía CDN)
 manifest.json                               Configuración de la PWA (permite "instalar" la app y el modo sin internet, ver 6.5)
 sw.js                                       Service worker: cachea el cascarón de la app para que cargue sin internet (ver 6.5)
+package.json                                Solo para que Vercel reconozca la función de api/ (ver 6.6) — no hay que tocarlo
+api/whatsapp-bitacora.js                    Función serverless: recibe fotos/notas por WhatsApp y arma la bitácora sola (ver 6.6)
 assets/                                     Logo y favicons de la marca (ver 6.3)
 js/config.js                                Tus llaves de Supabase — edítalo en el paso 3
 js/supabaseClient.js                        Conexión con Supabase
@@ -208,4 +302,5 @@ js/main.js                                  Lógica de la interfaz
 sql/schema.sql                              Esquema completo — solo para un proyecto de Supabase NUEVO
 sql/migration_v2_proyectos_entradas.sql     Migración — para un proyecto que ya tenías funcionando (ver 6.1)
 sql/migration_v3_documentos_bitacora.sql    Migración — documentos, bitácora y proveedores directorio (ver 6.5)
+sql/migration_v4_whatsapp_bitacora.sql      Migración — teléfono de integrantes y buzón de fotos de WhatsApp (ver 6.6)
 ```

@@ -1079,6 +1079,164 @@
     }
   });
 
+  // -------------------- REPORTE PDF DE BITÁCORA (por rango de fechas) --------------------
+  function formatoImagenDesdeDataUrl(dataUrl) {
+    const m = /^data:image\/(png|jpe?g|webp)/i.exec(dataUrl || "");
+    if (!m) return "JPEG";
+    const tipo = m[1].toLowerCase();
+    if (tipo === "png") return "PNG";
+    if (tipo === "webp") return "WEBP";
+    return "JPEG";
+  }
+
+  function tamañoImagen(dataUrl) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve({ width: img.naturalWidth || 1, height: img.naturalHeight || 1 });
+      img.onerror = reject;
+      img.src = dataUrl;
+    });
+  }
+
+  $("bitacora-pdf-btn").addEventListener("click", async () => {
+    const btn = $("bitacora-pdf-btn");
+    const desde = $("bitacora-pdf-desde").value || null;
+    const hasta = $("bitacora-pdf-hasta").value || null;
+    if (desde && hasta && desde > hasta) {
+      toast("La fecha 'Desde' no puede ser después de 'Hasta'", true);
+      return;
+    }
+
+    const mostrarTodos = !state.filtroProyecto;
+    let entradas = bitacoraFiltrada();
+    if (desde) entradas = entradas.filter((b) => b.fecha >= desde);
+    if (hasta) entradas = entradas.filter((b) => b.fecha <= hasta);
+    // Orden cronológico (más antiguo primero), como se lee una bitácora real.
+    entradas = [...entradas].sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+
+    if (entradas.length === 0) {
+      toast("No hay avances de bitácora en ese rango de fechas", true);
+      return;
+    }
+
+    btn.disabled = true;
+    try {
+      const nombreProyecto = mostrarTodos
+        ? "Todos los proyectos"
+        : state.proyectos.find((p) => p.id === state.filtroProyecto)?.nombre || "Proyecto";
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ unit: "pt" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginX = 40;
+      let y = 50;
+
+      try {
+        const logoData = await imageUrlToDataURL("assets/logo.png");
+        doc.addImage(logoData, "PNG", marginX, 24, 90, 27);
+      } catch (err) {
+        console.warn("No se pudo cargar el logo para el PDF:", err);
+      }
+
+      doc.setFontSize(16);
+      doc.setTextColor(20, 20, 20);
+      doc.text("Bitácora de avance de obra", pageWidth - marginX, 38, { align: "right" });
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(nombreProyecto, pageWidth - marginX, 54, { align: "right" });
+      const rangoTxt =
+        desde || hasta ? `${desde ? fmtFecha(desde) : "inicio"} — ${hasta ? fmtFecha(hasta) : "hoy"}` : "Todas las fechas";
+      doc.text(rangoTxt, pageWidth - marginX, 68, { align: "right" });
+      doc.text("Generado el " + new Date().toLocaleDateString("es-MX"), pageWidth - marginX, 82, { align: "right" });
+
+      y = 108;
+      doc.setDrawColor(219, 0, 46);
+      doc.setLineWidth(1);
+      doc.line(marginX, y, pageWidth - marginX, y);
+      y += 20;
+
+      const anchoFoto = 110;
+      const altoFoto = 110;
+      const gapFoto = 10;
+      const fotosPorFila = Math.max(1, Math.floor((pageWidth - marginX * 2 + gapFoto) / (anchoFoto + gapFoto)));
+
+      for (const b of entradas) {
+        // Salto de página si ni siquiera cabe el encabezado de esta entrada.
+        if (y > pageHeight - 90) {
+          doc.addPage();
+          y = 50;
+        }
+
+        doc.setFontSize(12);
+        doc.setTextColor(20, 20, 20);
+        let encabezado = fmtFecha(b.fecha);
+        if (mostrarTodos && b.proyectos?.nombre) encabezado += "  ·  " + b.proyectos.nombre;
+        if (b.capturado_por) encabezado += "  ·  " + b.capturado_por;
+        doc.text(encabezado, marginX, y);
+        y += 16;
+
+        if (b.nota) {
+          doc.setFontSize(10);
+          doc.setTextColor(60, 60, 60);
+          const lineas = doc.splitTextToSize(b.nota, pageWidth - marginX * 2);
+          for (const linea of lineas) {
+            if (y > pageHeight - 40) {
+              doc.addPage();
+              y = 50;
+            }
+            doc.text(linea, marginX, y);
+            y += 13;
+          }
+          y += 4;
+        }
+
+        const fotos = b.fotos || [];
+        if (fotos.length > 0) {
+          let x = marginX;
+          for (let i = 0; i < fotos.length; i++) {
+            if (y + altoFoto > pageHeight - 30) {
+              doc.addPage();
+              y = 50;
+              x = marginX;
+            }
+            try {
+              const dataUrl = await imageUrlToDataURL(fotos[i]);
+              const { width: iw, height: ih } = await tamañoImagen(dataUrl);
+              const escala = Math.min(anchoFoto / iw, altoFoto / ih);
+              const w = iw * escala;
+              const h = ih * escala;
+              doc.addImage(dataUrl, formatoImagenDesdeDataUrl(dataUrl), x + (anchoFoto - w) / 2, y + (altoFoto - h) / 2, w, h);
+            } catch (err) {
+              console.warn("No se pudo cargar una foto de bitácora para el PDF:", err);
+            }
+            const esUltimaDeFila = (i + 1) % fotosPorFila === 0;
+            if (esUltimaDeFila || i === fotos.length - 1) {
+              x = marginX;
+              y += altoFoto + gapFoto;
+            } else {
+              x += anchoFoto + gapFoto;
+            }
+          }
+        }
+
+        y += 14;
+        doc.setDrawColor(230, 230, 230);
+        doc.setLineWidth(0.5);
+        doc.line(marginX, y, pageWidth - marginX, y);
+        y += 18;
+      }
+
+      const sufijoRango = desde || hasta ? `_${desde || "inicio"}_a_${hasta || "hoy"}` : "";
+      const nombreArchivo = (mostrarTodos ? "todos_los_proyectos" : nombreProyecto).replace(/[^a-z0-9]+/gi, "_");
+      doc.save(`bitacora_${nombreArchivo}${sufijoRango}.pdf`);
+    } catch (err) {
+      toast("No se pudo generar el PDF de bitácora: " + err.message, true);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // -------------------- EXPORTAR A EXCEL --------------------
   $("export-excel-btn").addEventListener("click", () => {
     try {

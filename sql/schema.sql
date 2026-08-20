@@ -19,8 +19,15 @@ create extension if not exists "pgcrypto";
 create table if not exists integrantes (
   id uuid primary key default gen_random_uuid(),
   nombre text not null unique,
+  -- Teléfono con código de país y "+" (ej. "+5216671234567", tal
+  -- como lo manda Twilio, sin el prefijo "whatsapp:") — se usa para
+  -- identificar quién manda bitácora automática por WhatsApp (ver
+  -- api/whatsapp-bitacora.js).
+  telefono text,
   created_at timestamptz not null default now()
 );
+
+create unique index if not exists idx_integrantes_telefono on integrantes(telefono) where telefono is not null;
 
 -- -------------------------------------------------------------
 -- Tabla: categorias (partidas de la obra)
@@ -132,6 +139,21 @@ create table if not exists bitacora (
 create index if not exists idx_bitacora_proyecto on bitacora(proyecto_id);
 
 -- -------------------------------------------------------------
+-- Tabla: wa_bitacora_inbox (buzón temporal de fotos de WhatsApp,
+-- ver api/whatsapp-bitacora.js — NO la usa la app, solo la función
+-- serverless con la llave service_role, por eso no lleva políticas
+-- para "authenticated" ni se le hace grant más abajo)
+-- -------------------------------------------------------------
+create table if not exists wa_bitacora_inbox (
+  id uuid primary key default gen_random_uuid(),
+  telefono text not null,
+  foto_url text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_wa_inbox_telefono on wa_bitacora_inbox(telefono);
+
+-- -------------------------------------------------------------
 -- Trigger para actualizar updated_at automáticamente
 -- -------------------------------------------------------------
 create or replace function set_updated_at()
@@ -166,6 +188,10 @@ alter table gastos enable row level security;
 alter table entradas enable row level security;
 alter table documentos enable row level security;
 alter table bitacora enable row level security;
+alter table wa_bitacora_inbox enable row level security;
+-- wa_bitacora_inbox NO lleva política para "authenticated": solo la
+-- toca la función serverless con la llave service_role (que ignora
+-- RLS), ningún usuario de la app debe poder leerla ni escribirla.
 
 drop policy if exists "auth full access" on integrantes;
 create policy "auth full access" on integrantes

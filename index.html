@@ -377,6 +377,14 @@
       </div>
 
       <div>
+        <label class="flex items-center gap-2 text-sm text-slate-700">
+          <input id="entrada-con-iva" type="checkbox" class="rounded border-slate-300" />
+          Esta entrada incluye IVA (16%)
+        </label>
+        <p id="entrada-iva-desglose" class="text-xs text-slate-500 mt-1 hidden"></p>
+      </div>
+
+      <div>
         <label class="block text-sm font-medium text-slate-700 mb-1">Concepto</label>
         <input id="entrada-concepto" type="text" placeholder="Ej. Aportación para la obra"
           class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
@@ -490,10 +498,11 @@
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Comprobante (foto o PDF)</label>
-        <input id="gasto-comprobante" type="file" accept="image/*,application/pdf" capture="environment"
+        <label class="block text-sm font-medium text-slate-700 mb-1">Documentos (fotos o PDF)</label>
+        <div id="gasto-documentos-lista" class="space-y-1 mb-2"></div>
+        <input id="gasto-comprobante" type="file" accept="image/*,application/pdf" capture="environment" multiple
           class="w-full text-sm" />
-        <a id="gasto-comprobante-actual" href="#" target="_blank" class="text-sm text-blue-600 underline hidden mt-1 inline-block">Ver comprobante actual</a>
+        <p class="text-[11px] text-slate-400 mt-1">Puedes agregar más de uno (fotos y/o PDF). Se suben al guardar.</p>
       </div>
 
       <div>

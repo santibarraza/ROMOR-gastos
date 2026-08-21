@@ -640,7 +640,7 @@
   }
 
   // -------------------- TABS GASTOS / ENTRADAS / DOCUMENTOS / BITÁCORA --------------------
-  const TABS = ["gastos", "entradas", "documentos", "bitacora", "creditos"];
+  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos"];
   $("tab-gastos-btn").addEventListener("click", () => switchTab("gastos"));
   $("tab-entradas-btn").addEventListener("click", () => switchTab("entradas"));
   $("tab-documentos-btn").addEventListener("click", () => switchTab("documentos"));
@@ -769,11 +769,16 @@
               ? `<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 ${fmt(saldo)}</span>`
               : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 pagado</span>';
         }
+        let ivaTag = "";
+        if (g.con_iva) {
+          const { iva } = desgloseIva(Number(g.monto));
+          ivaTag = `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5 mr-1 align-middle">IVA ${fmt(iva)}</span>`;
+        }
         return `
         <button data-id="${g.id}" data-pendiente="${g._pendiente ? 1 : 0}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
           <div class="flex justify-between items-start">
             <div class="min-w-0 pr-2">
-              <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${creditoTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
+              <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${creditoTag}${ivaTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
               <p class="text-xs text-slate-500 truncate">${esc(g.categorias?.nombre || "")}${proveedor ? " · " + esc(proveedor) : ""}</p>
               <p class="text-xs text-slate-400">${fmtFecha(g.fecha)} · ${esc(g.metodo_pago || "")}${g.pagado_por ? " · pagó " + esc(g.pagado_por) : ""}</p>
             </div>
@@ -1606,6 +1611,8 @@
         Proveedor: g.proveedores?.nombre_empresa || g.proveedor_texto || "",
         Descripción: g.descripcion || "",
         Monto: Number(g.monto),
+        "Subtotal (sin IVA)": g.con_iva ? Number(desgloseIva(Number(g.monto)).subtotal.toFixed(2)) : "",
+        "IVA (16%)": g.con_iva ? Number(desgloseIva(Number(g.monto)).iva.toFixed(2)) : "",
         "Método de pago": g.metodo_pago || "",
         "Pagó": g.pagado_por || "",
         "Capturó": g.capturado_por || "",
@@ -1844,6 +1851,27 @@
   }
   $("gasto-metodo").addEventListener("change", toggleCreditoFields);
 
+  // Desglose de IVA (16%): el "monto" del gasto sigue siendo el total pagado
+  // (no cambia ningún cálculo existente); esto solo muestra cuánto de ese
+  // total corresponde a subtotal e IVA cuando el gasto marca "incluye IVA".
+  function desgloseIva(monto) {
+    const subtotal = monto / 1.16;
+    return { subtotal, iva: monto - subtotal };
+  }
+  function actualizarDesgloseIva() {
+    const monto = parseFloat($("gasto-monto").value);
+    const p = $("gasto-iva-desglose");
+    if ($("gasto-con-iva").checked && monto > 0) {
+      const { subtotal, iva } = desgloseIva(monto);
+      p.textContent = `Subtotal: ${fmt(subtotal)} · IVA: ${fmt(iva)}`;
+      p.classList.remove("hidden");
+    } else {
+      p.classList.add("hidden");
+    }
+  }
+  $("gasto-monto").addEventListener("input", actualizarDesgloseIva);
+  $("gasto-con-iva").addEventListener("change", actualizarDesgloseIva);
+
   $("gasto-categoria").addEventListener("change", renderProveedorOptions);
 
   async function openForm(id) {
@@ -1871,6 +1899,8 @@
       $("gasto-notas").value = g.notas || "";
       $("gasto-fecha-limite").value = g.fecha_limite_pago || "";
       toggleCreditoFields();
+      $("gasto-con-iva").checked = !!g.con_iva;
+      actualizarDesgloseIva();
       if (g.comprobante_url) {
         $("gasto-comprobante-actual").href = g.comprobante_url;
         $("gasto-comprobante-actual").classList.remove("hidden");
@@ -1892,6 +1922,8 @@
       $("gasto-notas").value = "";
       $("gasto-fecha-limite").value = "";
       toggleCreditoFields();
+      $("gasto-con-iva").checked = false;
+      actualizarDesgloseIva();
     }
     showView("form");
   }
@@ -1917,7 +1949,34 @@
         capturado_por: state.currentUser,
         notas: $("gasto-notas").value.trim() || null,
         fecha_limite_pago: $("gasto-metodo").value === "Crédito" ? $("gasto-fecha-limite").value || null : null,
+        con_iva: $("gasto-con-iva").checked,
       };
+
+      // Si el usuario escribió un proveedor que no está en la lista, se
+      // agrega automáticamente al directorio de proveedores (si hay
+      // internet) para que quede disponible en futuros gastos, y el gasto
+      // queda ligado a ese proveedor en vez de guardar solo el texto libre.
+      if (navigator.onLine && payload.proveedor_texto && !payload.proveedor_id) {
+        const nombreNuevo = payload.proveedor_texto;
+        let match = state.proveedores.find(
+          (p) => p.nombre_empresa.trim().toLowerCase() === nombreNuevo.toLowerCase()
+        );
+        if (!match) {
+          try {
+            match = await DATA.saveProveedor({
+              nombre_empresa: nombreNuevo,
+              categoria_id: payload.categoria_id || null,
+            });
+            state.proveedores = await DATA.getProveedores();
+          } catch (err) {
+            match = null; // si falla, se guarda el gasto con el texto libre como respaldo
+          }
+        }
+        if (match) {
+          payload.proveedor_id = match.id;
+          payload.proveedor_texto = null;
+        }
+      }
 
       const id = $("gasto-id").value || null;
       const file = $("gasto-comprobante").files[0];

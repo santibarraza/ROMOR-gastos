@@ -162,13 +162,25 @@
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
       <div>
         <img src="assets/logo.png" alt="ROMOR" class="logo-img" style="height:1.5rem" />
-        <p class="text-xs text-slate-500 mt-1">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">proyectos</button> · <button id="open-proveedores-btn" class="underline">proveedores</button></p>
+        <p class="text-xs text-slate-500 mt-1">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">proyectos</button> · <button id="open-proveedores-btn" class="underline">proveedores</button> · <button id="open-recordatorios-btn" class="underline">recordatorios</button></p>
       </div>
       <button id="logout-btn" class="text-sm text-slate-500 hover:text-slate-800">Salir</button>
     </div>
   </header>
 
   <main class="max-w-3xl mx-auto px-4 py-4 pb-24">
+    <!-- Tarjeta de recordatorios: fija arriba, visible sin importar la
+         pestaña o el filtro de proyecto activo. -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 mb-3">
+      <div class="flex items-center justify-between mb-1.5">
+        <h2 class="text-sm font-semibold text-slate-700">📌 Recordatorios</h2>
+        <button id="recordatorios-ver-todos-btn" class="text-xs text-blue-600 underline shrink-0">Ver todos</button>
+      </div>
+      <div id="recordatorios-lista-card" class="space-y-1"></div>
+      <p id="recordatorios-vacio-card" class="text-sm text-slate-400 hidden">🎉 No tienes recordatorios pendientes.</p>
+      <button id="recordatorios-add-card-btn" type="button" class="mt-1.5 text-xs text-blue-600 underline">+ Agregar recordatorio</button>
+    </div>
+
     <!-- Filtro de proyecto (vista general por defecto) -->
     <div class="mb-3">
       <select id="filtro-proyecto" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium bg-white">
@@ -584,6 +596,71 @@
             Cancelar
           </button>
           <button type="button" id="proveedor-delete-btn"
+            class="hidden px-4 rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
+            Eliminar
+          </button>
+        </div>
+      </form>
+    </div>
+  </main>
+</div>
+
+<!-- ===================== RECORDATORIOS ===================== -->
+<div id="view-recordatorios" class="view">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+      <button id="recordatorios-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <h1 class="text-lg font-bold text-slate-900">Recordatorios</h1>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-4 pb-24">
+    <p class="text-sm text-slate-500 mb-3">Pendientes, trámites y tareas con fecha — se ven arriba del dashboard hasta que los marques como hechos.</p>
+
+    <div class="flex gap-2 mb-3">
+      <button data-filtro="pendientes" class="recordatorios-filtro-btn flex-1 rounded-lg py-2 text-sm font-medium bg-brand text-white">Pendientes</button>
+      <button data-filtro="hechos" class="recordatorios-filtro-btn flex-1 rounded-lg py-2 text-sm font-medium bg-white border border-slate-300 text-slate-600">Hechos</button>
+      <button data-filtro="todos" class="recordatorios-filtro-btn flex-1 rounded-lg py-2 text-sm font-medium bg-white border border-slate-300 text-slate-600">Todos</button>
+    </div>
+
+    <div id="lista-recordatorios" class="space-y-2 mb-4"></div>
+    <p id="recordatorios-vacio" class="text-center text-slate-400 text-sm py-3 hidden">No hay recordatorios en esta vista.</p>
+
+    <div class="border-t border-slate-200 pt-4">
+      <h2 id="recordatorio-form-title" class="text-sm font-semibold text-slate-700 mb-3">Agregar recordatorio</h2>
+      <form id="form-recordatorio" class="space-y-3">
+        <input type="hidden" id="recordatorio-id" />
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">¿Qué hay que hacer?</label>
+          <input id="recordatorio-titulo" type="text" required placeholder="Ej. Pagar predial"
+            class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Fecha</label>
+          <input id="recordatorio-fecha" type="date" required
+            class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Proyecto (opcional)</label>
+          <select id="recordatorio-proyecto" class="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+            <option value="">— General, no ligado a un proyecto —</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-1">Notas (opcional)</label>
+          <textarea id="recordatorio-notas" rows="2" class="w-full rounded-lg border border-slate-300 px-3 py-2.5"></textarea>
+        </div>
+        <p id="recordatorio-form-error" class="text-red-600 text-sm hidden"></p>
+        <div class="flex gap-2">
+          <button type="submit" id="recordatorio-save-btn"
+            class="flex-1 bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark">
+            Guardar
+          </button>
+          <button type="button" id="recordatorio-cancel-btn"
+            class="hidden px-4 rounded-lg border border-slate-300 hover:bg-slate-50">
+            Cancelar
+          </button>
+          <button type="button" id="recordatorio-delete-btn"
             class="hidden px-4 rounded-lg border border-red-300 text-red-600 hover:bg-red-50">
             Eliminar
           </button>

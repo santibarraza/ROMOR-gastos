@@ -93,7 +93,9 @@ window.DATA = (function () {
     // aparte.
     let q = sb
       .from("gastos")
-      .select("*, categorias(nombre), proveedores(nombre_empresa), proyectos(nombre), abonos_credito(*)")
+      .select(
+        "*, categorias(nombre), proveedores(nombre_empresa), proyectos(nombre), abonos_credito(*), gasto_documentos(*)"
+      )
       .order("fecha", { ascending: false })
       .order("created_at", { ascending: false });
     if (proyectoId) q = q.eq("proyecto_id", proyectoId);
@@ -244,6 +246,21 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- DOCUMENTOS DE UN GASTO (varios por gasto) --------------------
+  // Un gasto puede tener varios documentos/comprobantes (fotos y/o PDF), no
+  // solo uno — cada fila de gasto_documentos es un archivo ya subido al
+  // bucket "comprobantes" de Storage, ligado al gasto por gasto_id.
+  async function addGastoDocumento(doc) {
+    const { data, error } = await sb.from("gasto_documentos").insert(doc).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function deleteGastoDocumento(id) {
+    const { error } = await sb.from("gasto_documentos").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   return {
     getCategorias,
     getProveedores,
@@ -271,5 +288,7 @@ window.DATA = (function () {
     deleteBitacoraEntry,
     addAbonoCredito,
     deleteAbonoCredito,
+    addGastoDocumento,
+    deleteGastoDocumento,
   };
 })();

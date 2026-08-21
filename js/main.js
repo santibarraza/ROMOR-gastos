@@ -784,7 +784,11 @@
             </div>
             <div class="text-right shrink-0">
               <p class="font-semibold text-slate-900">${fmt(g.monto)}</p>
-              ${g.comprobante_url ? '<span class="text-xs text-slate-400">📎 comprobante</span>' : ""}
+              ${(() => {
+                const n = (g.gasto_documentos || []).length;
+                if (n > 0) return `<span class="text-xs text-slate-400">📎 ${n} documento${n > 1 ? "s" : ""}</span>`;
+                return g.comprobante_url ? '<span class="text-xs text-slate-400">📎 comprobante</span>' : "";
+              })()}
             </div>
           </div>
         </button>`;
@@ -1042,11 +1046,16 @@
         const pendienteTag = e._pendiente
           ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
           : "";
+        let ivaTag = "";
+        if (e.con_iva) {
+          const { iva } = desgloseIva(Number(e.monto));
+          ivaTag = `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5 mr-1 align-middle">IVA ${fmt(iva)}</span>`;
+        }
         return `
       <button data-id="${e.id}" data-pendiente="${e._pendiente ? 1 : 0}" class="entrada-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
         <div class="flex justify-between items-start">
           <div class="min-w-0 pr-2">
-            <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${esc(e.concepto || "Entrada")}</p>
+            <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${ivaTag}${esc(e.concepto || "Entrada")}</p>
             <p class="text-xs text-slate-400">${fmtFecha(e.fecha)}${e.aportado_por ? " · aportó " + esc(e.aportado_por) : ""}</p>
           </div>
           <p class="font-semibold" style="color:#0ca30c">${fmt(e.monto)}</p>
@@ -1094,6 +1103,8 @@
       $("entrada-concepto").value = e.concepto || "";
       $("entrada-aportador").value = e.aportado_por || "";
       $("entrada-notas").value = e.notas || "";
+      $("entrada-con-iva").checked = !!e.con_iva;
+      actualizarDesgloseIvaEntrada();
     } else {
       $("entrada-form-title").textContent = "Nueva entrada";
       $("entrada-delete-btn").classList.add("hidden");
@@ -1104,9 +1115,25 @@
       $("entrada-concepto").value = "";
       $("entrada-aportador").value = state.currentUser;
       $("entrada-notas").value = "";
+      $("entrada-con-iva").checked = false;
+      actualizarDesgloseIvaEntrada();
     }
     showView("form-entrada");
   }
+
+  function actualizarDesgloseIvaEntrada() {
+    const monto = parseFloat($("entrada-monto").value);
+    const p = $("entrada-iva-desglose");
+    if ($("entrada-con-iva").checked && monto > 0) {
+      const { subtotal, iva } = desgloseIva(monto);
+      p.textContent = `Subtotal: ${fmt(subtotal)} · IVA: ${fmt(iva)}`;
+      p.classList.remove("hidden");
+    } else {
+      p.classList.add("hidden");
+    }
+  }
+  $("entrada-monto").addEventListener("input", actualizarDesgloseIvaEntrada);
+  $("entrada-con-iva").addEventListener("change", actualizarDesgloseIvaEntrada);
 
   $("form-entrada").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -1124,6 +1151,7 @@
         aportado_por: $("entrada-aportador").value || null,
         capturado_por: state.currentUser,
         notas: $("entrada-notas").value.trim() || null,
+        con_iva: $("entrada-con-iva").checked,
       };
       const id = $("entrada-id").value || null;
 
@@ -1628,6 +1656,8 @@
         Fecha: e.fecha,
         Concepto: e.concepto || "",
         Monto: Number(e.monto),
+        "Subtotal (sin IVA)": e.con_iva ? Number(desgloseIva(Number(e.monto)).subtotal.toFixed(2)) : "",
+        "IVA (16%)": e.con_iva ? Number(desgloseIva(Number(e.monto)).iva.toFixed(2)) : "",
         "Aportó": e.aportado_por || "",
         "Capturó": e.capturado_por || "",
         Notas: e.notas || "",
@@ -1874,11 +1904,46 @@
 
   $("gasto-categoria").addEventListener("change", renderProveedorOptions);
 
+  // Lista de documentos/comprobantes ya subidos de un gasto, dentro de su
+  // formulario, cada uno con un botón para borrarlo individualmente (el
+  // borrado es inmediato, no espera a que se guarde el formulario).
+  function renderGastoDocumentos(docs) {
+    const cont = $("gasto-documentos-lista");
+    if (!docs || !docs.length) {
+      cont.innerHTML = "";
+      return;
+    }
+    cont.innerHTML = docs
+      .map(
+        (d) => `
+      <div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5" data-doc-id="${d.id}">
+        <a href="${d.url}" target="_blank" class="text-sm text-blue-600 underline truncate">${esc(d.nombre || "Documento")}</a>
+        <button type="button" class="gasto-doc-delete-btn text-red-500 hover:text-red-700 text-sm shrink-0" data-id="${d.id}">🗑️</button>
+      </div>`
+      )
+      .join("");
+    cont.querySelectorAll(".gasto-doc-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("¿Eliminar este documento? Esta acción no se puede deshacer.")) return;
+        try {
+          await DATA.deleteGastoDocumento(btn.dataset.id);
+          btn.closest("[data-doc-id]").remove();
+          const gastoId = $("gasto-id").value;
+          const g = state.gastos.find((x) => x.id === gastoId);
+          if (g) g.gasto_documentos = (g.gasto_documentos || []).filter((d) => d.id !== btn.dataset.id);
+          toast("Documento eliminado");
+        } catch (err) {
+          toast("No se pudo eliminar el documento: " + err.message, true);
+        }
+      });
+    });
+  }
+
   async function openForm(id) {
     fillSelects();
     $("form-error").classList.add("hidden");
     $("gasto-comprobante").value = "";
-    $("gasto-comprobante-actual").classList.add("hidden");
+    renderGastoDocumentos([]);
     state.editingId = id;
 
     if (id) {
@@ -1901,10 +1966,7 @@
       toggleCreditoFields();
       $("gasto-con-iva").checked = !!g.con_iva;
       actualizarDesgloseIva();
-      if (g.comprobante_url) {
-        $("gasto-comprobante-actual").href = g.comprobante_url;
-        $("gasto-comprobante-actual").classList.remove("hidden");
-      }
+      renderGastoDocumentos(g.gasto_documentos || []);
     } else {
       $("form-title").textContent = "Nuevo gasto";
       $("gasto-delete-btn").classList.add("hidden");
@@ -1979,14 +2041,14 @@
       }
 
       const id = $("gasto-id").value || null;
-      const file = $("gasto-comprobante").files[0];
+      const files = Array.from($("gasto-comprobante").files || []);
 
       if (!navigator.onLine && !id) {
-        // Sin internet no se puede subir el comprobante (requiere red); se
+        // Sin internet no se pueden subir documentos (requiere red); se
         // guarda el gasto en una cola local y se sube solo en cuanto vuelva
-        // la conexión. El comprobante se puede agregar después editando.
-        if (file) {
-          toast("Sin internet: el comprobante no se subió, agrégalo después editando el gasto", true);
+        // la conexión. Los documentos se pueden agregar después editando.
+        if (files.length) {
+          toast("Sin internet: los documentos no se subieron, agrégalos después editando el gasto", true);
         }
         const localId = queueOutbox("gasto", payload);
         if (proyectoId) rememberProyecto(proyectoId);
@@ -1998,13 +2060,25 @@
         return;
       }
 
-      if (file) {
-        const up = await DATA.uploadComprobante(file);
-        payload.comprobante_url = up.url;
-        payload.comprobante_nombre = up.nombre;
+      const saved = await DATA.saveGasto(payload, id);
+      const gastoId = id || saved.id;
+
+      if (files.length) {
+        for (const file of files) {
+          try {
+            const up = await DATA.uploadComprobante(file);
+            await DATA.addGastoDocumento({
+              gasto_id: gastoId,
+              url: up.url,
+              nombre: up.nombre,
+              subido_por: state.currentUser,
+            });
+          } catch (err) {
+            toast(`No se pudo subir "${file.name}": ` + err.message, true);
+          }
+        }
       }
 
-      await DATA.saveGasto(payload, id);
       if (proyectoId) rememberProyecto(proyectoId);
       toast(id ? "Gasto actualizado" : "Gasto guardado");
       showView("dashboard");

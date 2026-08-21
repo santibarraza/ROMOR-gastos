@@ -558,16 +558,22 @@
     const estado = recordatorioEstado(r);
     const proyectoTag =
       conProyecto && r.proyectos?.nombre
-        ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(r.proyectos.nombre)}</span>`
+        ? `<span class="inline-block shrink-0 text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 align-middle">${esc(r.proyectos.nombre)}</span>`
         : "";
     const fechaTag = r.hecho
-      ? `<span class="inline-block text-[10px] font-medium text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 align-middle">✓ ${fmtFecha(r.fecha)}</span>`
-      : `<span class="inline-block text-[10px] font-medium ${estado.clase} rounded px-1.5 py-0.5 align-middle">${estado.texto}</span>`;
+      ? `<span class="inline-block shrink-0 text-[10px] font-medium text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 align-middle">✓ ${fmtFecha(r.fecha)}</span>`
+      : `<span class="inline-block shrink-0 text-[10px] font-medium ${estado.clase} rounded px-1.5 py-0.5 align-middle">${estado.texto}</span>`;
+    // El botón es flex (no solo su contenedor padre) para que el <span> del
+    // título quede "blockificado" como hijo directo de un flex container —
+    // así "truncate" (overflow/ellipsis) sí recorta el texto largo en vez
+    // de desbordarse fuera de la tarjeta (un <span> normal, inline, ignora
+    // text-overflow aunque tenga la clase "truncate").
     return `
-      <div class="flex items-center gap-2 py-1" data-recordatorio-id="${r.id}">
+      <div class="flex items-center gap-2 py-1 min-w-0" data-recordatorio-id="${r.id}">
         <input type="checkbox" class="recordatorio-check shrink-0 w-4 h-4 rounded border-slate-300" data-id="${r.id}" ${r.hecho ? "checked" : ""} />
-        <button type="button" class="recordatorio-abrir min-w-0 flex-1 text-left" data-id="${r.id}">
-          <span class="text-sm ${r.hecho ? "text-slate-400 line-through" : "text-slate-800"} truncate align-middle">${proyectoTag}${esc(r.titulo)}</span>
+        <button type="button" class="recordatorio-abrir min-w-0 flex-1 flex items-center gap-1 text-left" data-id="${r.id}">
+          ${proyectoTag}
+          <span class="text-sm ${r.hecho ? "text-slate-400 line-through" : "text-slate-800"} truncate min-w-0">${esc(r.titulo)}</span>
         </button>
         ${fechaTag}
       </div>`;

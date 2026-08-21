@@ -261,6 +261,37 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- RECORDATORIOS --------------------
+  // Tareas/trámites con fecha, opcionalmente ligados a un proyecto (o
+  // generales si proyecto_id es null). Se traen TODOS siempre (no se
+  // filtran por proyecto_id como gastos/entradas) porque la tarjeta fija
+  // del dashboard los muestra sin importar el proyecto que esté filtrado.
+  async function getRecordatorios() {
+    const { data, error } = await sb
+      .from("recordatorios")
+      .select("*, proyectos(nombre)")
+      .order("fecha", { ascending: true });
+    if (error) throw error;
+    return data;
+  }
+
+  async function saveRecordatorio(recordatorio, id) {
+    if (id) {
+      const { data, error } = await sb.from("recordatorios").update(recordatorio).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await sb.from("recordatorios").insert(recordatorio).select().single();
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  async function deleteRecordatorio(id) {
+    const { error } = await sb.from("recordatorios").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   return {
     getCategorias,
     getProveedores,
@@ -290,5 +321,8 @@ window.DATA = (function () {
     deleteAbonoCredito,
     addGastoDocumento,
     deleteGastoDocumento,
+    getRecordatorios,
+    saveRecordatorio,
+    deleteRecordatorio,
   };
 })();

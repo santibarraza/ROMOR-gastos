@@ -11,6 +11,8 @@
     entradas: [],
     documentos: [],
     bitacora: [],
+    recordatorios: [],
+    recordatoriosFiltro: "pendientes",
     currentUser: localStorage.getItem("romor_user") || null,
     // "Último proyecto usado": solo se usa para pre-seleccionar el proyecto
     // al crear un gasto/entrada nuevo. Ya NO bloquea el acceso al dashboard.
@@ -310,10 +312,11 @@
         const nEntradas = state.entradas.filter((e) => e.proyecto_id === id).length;
         const nDocumentos = state.documentos.filter((d) => d.proyecto_id === id).length;
         const nBitacora = state.bitacora.filter((b) => b.proyecto_id === id).length;
+        const nRecordatorios = state.recordatorios.filter((r) => r.proyecto_id === id).length;
         const detalle =
-          nGastos || nEntradas || nDocumentos || nBitacora
-            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s) y ${nBitacora} avance(s) de bitácora de este proyecto.`
-            : " Este proyecto no tiene gastos, entradas, documentos ni avances de bitácora registrados.";
+          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios
+            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora y ${nRecordatorios} recordatorio(s) de este proyecto.`
+            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora ni recordatorios registrados.";
         if (!confirm(`¿Eliminar el proyecto "${nombre}"?${detalle} Esta acción no se puede deshacer.`)) return;
         try {
           await DATA.deleteProyecto(id);
@@ -322,6 +325,8 @@
           state.entradas = state.entradas.filter((e) => e.proyecto_id !== id);
           state.documentos = state.documentos.filter((d) => d.proyecto_id !== id);
           state.bitacora = state.bitacora.filter((b) => b.proyecto_id !== id);
+          state.recordatorios = state.recordatorios.filter((r) => r.proyecto_id !== id);
+          renderRecordatoriosCard();
           if (state.filtroProyecto === id) state.filtroProyecto = "";
           if (state.currentProject?.id === id) {
             state.currentProject = null;
@@ -521,6 +526,240 @@
     }
   });
 
+  // -------------------- RECORDATORIOS --------------------
+  // Tareas/trámites con fecha y un check para marcarlos hechos. Se muestran
+  // en una tarjeta fija arriba del dashboard (visible sin importar la
+  // pestaña o el filtro de proyecto activo), y hay una pantalla completa
+  // para verlos todos, agregar, editar y borrar. Pueden estar ligados a un
+  // proyecto o ser generales (proyecto_id null).
+  function recordatorioEstado(r) {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const fecha = new Date(r.fecha + "T00:00:00");
+    const dias = Math.round((fecha - hoy) / 86400000);
+    let texto, clase;
+    if (dias < 0) {
+      texto = `vencido hace ${-dias}d`;
+      clase = "text-red-700 bg-red-50";
+    } else if (dias === 0) {
+      texto = "hoy";
+      clase = "text-red-700 bg-red-50";
+    } else if (dias <= 3) {
+      texto = `en ${dias}d`;
+      clase = "text-amber-700 bg-amber-50";
+    } else {
+      texto = fmtFecha(r.fecha);
+      clase = "text-slate-500 bg-slate-100";
+    }
+    return { dias, texto, clase };
+  }
+
+  function recordatorioRowHtml(r, { conProyecto }) {
+    const estado = recordatorioEstado(r);
+    const proyectoTag =
+      conProyecto && r.proyectos?.nombre
+        ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(r.proyectos.nombre)}</span>`
+        : "";
+    const fechaTag = r.hecho
+      ? `<span class="inline-block text-[10px] font-medium text-slate-500 bg-slate-100 rounded px-1.5 py-0.5 align-middle">✓ ${fmtFecha(r.fecha)}</span>`
+      : `<span class="inline-block text-[10px] font-medium ${estado.clase} rounded px-1.5 py-0.5 align-middle">${estado.texto}</span>`;
+    return `
+      <div class="flex items-center gap-2 py-1" data-recordatorio-id="${r.id}">
+        <input type="checkbox" class="recordatorio-check shrink-0 w-4 h-4 rounded border-slate-300" data-id="${r.id}" ${r.hecho ? "checked" : ""} />
+        <button type="button" class="recordatorio-abrir min-w-0 flex-1 text-left" data-id="${r.id}">
+          <span class="text-sm ${r.hecho ? "text-slate-400 line-through" : "text-slate-800"} truncate align-middle">${proyectoTag}${esc(r.titulo)}</span>
+        </button>
+        ${fechaTag}
+      </div>`;
+  }
+
+  async function toggleRecordatorioHecho(id, hecho) {
+    const r = state.recordatorios.find((x) => x.id === id);
+    if (!r) return;
+    const payload = {
+      hecho,
+      hecho_por: hecho ? state.currentUser : null,
+      hecho_en: hecho ? new Date().toISOString() : null,
+    };
+    try {
+      await DATA.saveRecordatorio(payload, id);
+      Object.assign(r, payload);
+      renderRecordatoriosCard();
+      if ($("view-recordatorios").classList.contains("active")) renderRecordatoriosList();
+    } catch (err) {
+      toast("No se pudo actualizar el recordatorio: " + err.message, true);
+    }
+  }
+
+  function renderRecordatoriosCard() {
+    const pendientes = state.recordatorios.filter((r) => !r.hecho);
+    const cont = $("recordatorios-lista-card");
+    $("recordatorios-vacio-card").classList.toggle("hidden", pendientes.length > 0);
+    const TOP_N = 5;
+    cont.innerHTML = pendientes
+      .slice(0, TOP_N)
+      .map((r) => recordatorioRowHtml(r, { conProyecto: true }))
+      .join("");
+    if (pendientes.length > TOP_N) {
+      cont.innerHTML += `<p class="text-xs text-slate-400 pt-1">+${pendientes.length - TOP_N} más — toca "Ver todos"</p>`;
+    }
+    cont.querySelectorAll(".recordatorio-check").forEach((el) => {
+      el.addEventListener("click", (ev) => ev.stopPropagation());
+      el.addEventListener("change", () => toggleRecordatorioHecho(el.dataset.id, el.checked));
+    });
+    cont.querySelectorAll(".recordatorio-abrir").forEach((el) => {
+      el.addEventListener("click", () => {
+        openRecordatoriosView();
+        openRecordatorioForEdit(el.dataset.id);
+      });
+    });
+  }
+
+  $("recordatorios-ver-todos-btn").addEventListener("click", () => openRecordatoriosView());
+  $("recordatorios-add-card-btn").addEventListener("click", () => {
+    openRecordatoriosView();
+    resetRecordatorioForm();
+  });
+  $("open-recordatorios-btn").addEventListener("click", () => openRecordatoriosView());
+  $("recordatorios-back-btn").addEventListener("click", () => showView("dashboard"));
+
+  function openRecordatoriosView() {
+    setRecordatoriosFiltro(state.recordatoriosFiltro || "pendientes");
+    resetRecordatorioForm();
+    showView("recordatorios");
+  }
+
+  function setRecordatoriosFiltro(filtro) {
+    state.recordatoriosFiltro = filtro;
+    document.querySelectorAll(".recordatorios-filtro-btn").forEach((btn) => {
+      const activo = btn.dataset.filtro === filtro;
+      btn.className =
+        "recordatorios-filtro-btn flex-1 rounded-lg py-2 text-sm font-medium " +
+        (activo ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
+    });
+    renderRecordatoriosList();
+  }
+
+  document.querySelectorAll(".recordatorios-filtro-btn").forEach((btn) => {
+    btn.addEventListener("click", () => setRecordatoriosFiltro(btn.dataset.filtro));
+  });
+
+  function renderRecordatoriosList() {
+    const filtro = state.recordatoriosFiltro;
+    let lista = state.recordatorios;
+    if (filtro === "pendientes") lista = lista.filter((r) => !r.hecho);
+    else if (filtro === "hechos") lista = lista.filter((r) => r.hecho);
+    const cont = $("lista-recordatorios");
+    $("recordatorios-vacio").classList.toggle("hidden", lista.length > 0);
+    cont.innerHTML = lista
+      .map(
+        (r) => `<div class="bg-white rounded-xl border border-slate-200 shadow-sm px-3">
+          ${recordatorioRowHtml(r, { conProyecto: true })}
+        </div>`
+      )
+      .join("");
+    cont.querySelectorAll(".recordatorio-check").forEach((el) => {
+      el.addEventListener("click", (ev) => ev.stopPropagation());
+      el.addEventListener("change", () => toggleRecordatorioHecho(el.dataset.id, el.checked));
+    });
+    cont.querySelectorAll(".recordatorio-abrir").forEach((el) => {
+      el.addEventListener("click", () => openRecordatorioForEdit(el.dataset.id));
+    });
+  }
+
+  function proyectoOptionsRecordatorio(selectedId) {
+    return (
+      '<option value="">— General, no ligado a un proyecto —</option>' +
+      state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("")
+    );
+  }
+
+  function resetRecordatorioForm() {
+    $("recordatorio-form-title").textContent = "Agregar recordatorio";
+    $("recordatorio-id").value = "";
+    $("recordatorio-titulo").value = "";
+    $("recordatorio-fecha").value = new Date().toISOString().slice(0, 10);
+    $("recordatorio-proyecto").innerHTML = proyectoOptionsRecordatorio();
+    $("recordatorio-proyecto").value = "";
+    $("recordatorio-notas").value = "";
+    $("recordatorio-form-error").classList.add("hidden");
+    $("recordatorio-cancel-btn").classList.add("hidden");
+    $("recordatorio-delete-btn").classList.add("hidden");
+  }
+
+  function openRecordatorioForEdit(id) {
+    const r = state.recordatorios.find((x) => x.id === id);
+    if (!r) return;
+    $("recordatorio-form-title").textContent = "Editar recordatorio";
+    $("recordatorio-id").value = r.id;
+    $("recordatorio-titulo").value = r.titulo || "";
+    $("recordatorio-fecha").value = r.fecha;
+    $("recordatorio-proyecto").innerHTML = proyectoOptionsRecordatorio();
+    $("recordatorio-proyecto").value = r.proyecto_id || "";
+    $("recordatorio-notas").value = r.notas || "";
+    $("recordatorio-form-error").classList.add("hidden");
+    $("recordatorio-cancel-btn").classList.remove("hidden");
+    $("recordatorio-delete-btn").classList.remove("hidden");
+  }
+
+  $("recordatorio-cancel-btn").addEventListener("click", () => resetRecordatorioForm());
+
+  $("form-recordatorio").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("recordatorio-form-error").classList.add("hidden");
+    const btn = $("recordatorio-save-btn");
+    btn.disabled = true;
+    btn.textContent = "Guardando...";
+    try {
+      const titulo = $("recordatorio-titulo").value.trim();
+      if (!titulo) throw new Error("Escribe qué hay que hacer.");
+      const payload = {
+        titulo,
+        fecha: $("recordatorio-fecha").value,
+        proyecto_id: $("recordatorio-proyecto").value || null,
+        notas: $("recordatorio-notas").value.trim() || null,
+        creado_por: state.currentUser,
+      };
+      const id = $("recordatorio-id").value || null;
+      const saved = await DATA.saveRecordatorio(payload, id);
+      if (id) {
+        const i = state.recordatorios.findIndex((r) => r.id === id);
+        const proyecto = state.proyectos.find((p) => p.id === payload.proyecto_id);
+        state.recordatorios[i] = { ...state.recordatorios[i], ...saved, proyectos: proyecto ? { nombre: proyecto.nombre } : null };
+      } else {
+        const proyecto = state.proyectos.find((p) => p.id === payload.proyecto_id);
+        state.recordatorios.push({ ...saved, proyectos: proyecto ? { nombre: proyecto.nombre } : null, hecho: false });
+      }
+      state.recordatorios.sort((a, b) => (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0));
+      toast(id ? "Recordatorio actualizado" : "Recordatorio agregado");
+      resetRecordatorioForm();
+      renderRecordatoriosList();
+      renderRecordatoriosCard();
+    } catch (err) {
+      $("recordatorio-form-error").textContent = "Error al guardar: " + err.message;
+      $("recordatorio-form-error").classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Guardar";
+    }
+  });
+
+  $("recordatorio-delete-btn").addEventListener("click", async () => {
+    const id = $("recordatorio-id").value;
+    if (!id) return;
+    if (!confirm("¿Eliminar este recordatorio? Esta acción no se puede deshacer.")) return;
+    try {
+      await DATA.deleteRecordatorio(id);
+      state.recordatorios = state.recordatorios.filter((r) => r.id !== id);
+      toast("Recordatorio eliminado");
+      resetRecordatorioForm();
+      renderRecordatoriosList();
+      renderRecordatoriosCard();
+    } catch (err) {
+      toast("Error al eliminar: " + err.message, true);
+    }
+  });
+
   // -------------------- DASHBOARD --------------------
   async function goToDashboard() {
     $("current-user-label").textContent = state.currentUser;
@@ -534,16 +773,18 @@
       // Traemos TODOS los gastos/entradas/documentos/bitácora (de todos los
       // proyectos) y filtramos en el cliente — así la vista general y el
       // filtro por proyecto no requieren volver a pedir datos al servidor.
-      const [gastos, entradas, documentos, bitacora] = await Promise.all([
+      const [gastos, entradas, documentos, bitacora, recordatorios] = await Promise.all([
         DATA.getGastos(),
         DATA.getEntradas(),
         DATA.getDocumentos(),
         DATA.getBitacora(),
+        DATA.getRecordatorios(),
       ]);
       state.gastos = gastos;
       state.entradas = entradas;
       state.documentos = documentos;
       state.bitacora = bitacora;
+      state.recordatorios = recordatorios;
     } catch (err) {
       toast("Error cargando datos: " + err.message, true);
       return;
@@ -555,6 +796,7 @@
     renderDocumentosList();
     renderBitacoraList();
     renderCreditosList();
+    renderRecordatoriosCard();
   }
 
   // Compatibilidad: algunas partes del código piden solo refrescar gastos/entradas

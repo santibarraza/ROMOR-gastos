@@ -210,6 +210,7 @@
       <button id="tab-entradas-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Entradas</button>
       <button id="tab-documentos-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Documentos</button>
       <button id="tab-bitacora-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Bitácora</button>
+      <button id="tab-creditos-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Créditos</button>
     </div>
 
     <!-- ===== Panel de gastos ===== -->
@@ -292,6 +293,49 @@
       </div>
       <div id="lista-bitacora" class="space-y-3"></div>
       <p id="lista-bitacora-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Aún no hay avances registrados.</p>
+    </div>
+
+    <!-- ===== Panel de créditos (gastos con método de pago "Crédito") ===== -->
+    <div id="panel-creditos" class="hidden">
+      <p class="text-xs text-slate-500 mb-3">Gastos capturados con método de pago "Crédito" — deudas con proveedores, con abonos parciales hasta saldarlas.</p>
+
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-3">
+        <p class="text-xs text-slate-500">Total adeudado</p>
+        <p id="creditos-total-adeudado" class="text-2xl font-display tracking-wide text-red-600">$0</p>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 mb-3">
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+          <p class="text-[11px] text-slate-500">0-30 días</p>
+          <p id="creditos-bucket-1" class="text-sm font-semibold text-slate-900">$0</p>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+          <p class="text-[11px] text-slate-500">31-60 días</p>
+          <p id="creditos-bucket-2" class="text-sm font-semibold text-slate-900">$0</p>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+          <p class="text-[11px] text-slate-500">61+ días</p>
+          <p id="creditos-bucket-3" class="text-sm font-semibold text-slate-900">$0</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-3">
+        <h2 class="text-sm font-semibold text-slate-700 mb-2">Adeudado por proveedor</h2>
+        <div id="creditos-por-proveedor" class="space-y-1"></div>
+      </div>
+
+      <div class="flex items-center gap-2 mb-3">
+        <select id="creditos-filtro-proveedor" class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm">
+          <option value="">Todos los proveedores</option>
+        </select>
+        <label class="flex items-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
+          <input id="creditos-solo-pendientes" type="checkbox" checked class="rounded border-slate-300" />
+          Solo pendientes
+        </label>
+      </div>
+
+      <div id="lista-creditos" class="space-y-2"></div>
+      <p id="lista-creditos-vacia" class="text-center text-slate-400 text-sm py-8 hidden">No hay gastos a crédito.</p>
     </div>
   </main>
 
@@ -421,6 +465,7 @@
             <option>Transferencia</option>
             <option>Tarjeta</option>
             <option>Cheque</option>
+            <option>Crédito</option>
             <option>Otro</option>
           </select>
         </div>
@@ -428,6 +473,12 @@
           <label class="block text-sm font-medium text-slate-700 mb-1">¿Quién pagó?</label>
           <select id="gasto-pagador" class="w-full rounded-lg border border-slate-300 px-3 py-2.5"></select>
         </div>
+      </div>
+
+      <div id="gasto-credito-fields" class="hidden">
+        <label class="block text-sm font-medium text-slate-700 mb-1">Fecha límite de pago (opcional)</label>
+        <input id="gasto-fecha-limite" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+        <p class="text-[11px] text-slate-400 mt-1">Este gasto va a aparecer en la pestaña "Créditos" hasta que registres abonos que lo salden por completo.</p>
       </div>
 
       <div>

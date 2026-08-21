@@ -56,6 +56,16 @@ window.DATA = (function () {
     return data;
   }
 
+  // Borra un proyecto. La base de datos tiene "on delete cascade" en
+  // gastos/entradas/documentos/bitacora hacia proyectos, así que esto borra
+  // también TODOS sus gastos, entradas, documentos y avances de bitácora —
+  // por eso main.js pide confirmación mostrando esos totales antes de llamar
+  // a esta función.
+  async function deleteProyecto(id) {
+    const { error } = await sb.from("proyectos").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   async function getIntegrantes() {
     const { data, error } = await sb
       .from("integrantes")
@@ -76,9 +86,14 @@ window.DATA = (function () {
   }
 
   async function getGastos(proyectoId) {
+    // abonos_credito(*): trae los abonos parciales de cada gasto marcado
+    // como "Crédito" (relación uno-a-muchos, Supabase la resuelve sola por
+    // la llave foránea abonos_credito.gasto_id -> gastos.id). Así el saldo
+    // pendiente de cada deuda se puede calcular en el cliente sin pedirlo
+    // aparte.
     let q = sb
       .from("gastos")
-      .select("*, categorias(nombre), proveedores(nombre_empresa), proyectos(nombre)")
+      .select("*, categorias(nombre), proveedores(nombre_empresa), proyectos(nombre), abonos_credito(*)")
       .order("fecha", { ascending: false })
       .order("created_at", { ascending: false });
     if (proyectoId) q = q.eq("proyecto_id", proyectoId);
@@ -213,6 +228,22 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- ABONOS DE GASTOS A CRÉDITO --------------------
+  // Un gasto con metodo_pago === "Crédito" es una deuda con un proveedor.
+  // Cada fila de abonos_credito es un pago parcial contra esa deuda; el
+  // saldo pendiente se calcula en el cliente (monto del gasto menos la
+  // suma de sus abonos), no se guarda como columna aparte.
+  async function addAbonoCredito(abono) {
+    const { data, error } = await sb.from("abonos_credito").insert(abono).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function deleteAbonoCredito(id) {
+    const { error } = await sb.from("abonos_credito").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   return {
     getCategorias,
     getProveedores,
@@ -220,6 +251,7 @@ window.DATA = (function () {
     deleteProveedor,
     getProyectos,
     addProyecto,
+    deleteProyecto,
     getIntegrantes,
     addIntegrante,
     getGastos,
@@ -237,5 +269,7 @@ window.DATA = (function () {
     getBitacora,
     addBitacoraEntry,
     deleteBitacoraEntry,
+    addAbonoCredito,
+    deleteAbonoCredito,
   };
 })();

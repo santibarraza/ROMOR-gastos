@@ -554,6 +554,7 @@
     renderEntradasList();
     renderDocumentosList();
     renderBitacoraList();
+    renderCreditosList();
   }
 
   // Compatibilidad: algunas partes del código piden solo refrescar gastos/entradas
@@ -575,6 +576,7 @@
     renderEntradasList();
     renderDocumentosList();
     renderBitacoraList();
+    renderCreditosList();
   });
 
   function gastosFiltrados() {
@@ -638,11 +640,12 @@
   }
 
   // -------------------- TABS GASTOS / ENTRADAS / DOCUMENTOS / BITÁCORA --------------------
-  const TABS = ["gastos", "entradas", "documentos", "bitacora"];
+  const TABS = ["gastos", "entradas", "documentos", "bitacora", "creditos"];
   $("tab-gastos-btn").addEventListener("click", () => switchTab("gastos"));
   $("tab-entradas-btn").addEventListener("click", () => switchTab("entradas"));
   $("tab-documentos-btn").addEventListener("click", () => switchTab("documentos"));
   $("tab-bitacora-btn").addEventListener("click", () => switchTab("bitacora"));
+  $("tab-creditos-btn").addEventListener("click", () => switchTab("creditos"));
 
   function switchTab(tab) {
     TABS.forEach((t) => {
@@ -757,11 +760,20 @@
         const pendienteTag = g._pendiente
           ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
           : "";
+        let creditoTag = "";
+        if (g.metodo_pago === "Crédito") {
+          const abonado = (g.abonos_credito || []).reduce((s, a) => s + Number(a.monto), 0);
+          const saldo = Number(g.monto) - abonado;
+          creditoTag =
+            saldo > 0.005
+              ? `<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 ${fmt(saldo)}</span>`
+              : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 pagado</span>';
+        }
         return `
         <button data-id="${g.id}" data-pendiente="${g._pendiente ? 1 : 0}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
           <div class="flex justify-between items-start">
             <div class="min-w-0 pr-2">
-              <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
+              <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${creditoTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
               <p class="text-xs text-slate-500 truncate">${esc(g.categorias?.nombre || "")}${proveedor ? " · " + esc(proveedor) : ""}</p>
               <p class="text-xs text-slate-400">${fmtFecha(g.fecha)} · ${esc(g.metodo_pago || "")}${g.pagado_por ? " · pagó " + esc(g.pagado_por) : ""}</p>
             </div>
@@ -785,6 +797,230 @@
   }
 
   $("filtro-categoria").addEventListener("change", renderLista);
+
+  // -------------------- CRÉDITOS (gastos con metodo_pago = "Crédito") --------------------
+  // No hay una columna "es_credito" aparte: un gasto es una deuda a crédito
+  // si su metodo_pago vale exactamente "Crédito". El saldo pendiente se
+  // calcula en el cliente restándole al monto original la suma de sus
+  // abonos (g.abonos_credito, que ya viene incluido en cada gasto gracias
+  // al select anidado de DATA.getGastos).
+  function creditoInfo(g) {
+    const abonado = (g.abonos_credito || []).reduce((s, a) => s + Number(a.monto), 0);
+    const saldo = Number(g.monto) - abonado;
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const fechaGasto = new Date(g.fecha + "T00:00:00");
+    const diasAntiguedad = Math.max(0, Math.floor((hoy - fechaGasto) / 86400000));
+    let diasParaVencer = null;
+    let vencido = false;
+    if (g.fecha_limite_pago) {
+      const fl = new Date(g.fecha_limite_pago + "T00:00:00");
+      diasParaVencer = Math.floor((fl - hoy) / 86400000);
+      vencido = diasParaVencer < 0 && saldo > 0.005;
+    }
+    return { abonado, saldo, diasAntiguedad, diasParaVencer, vencido };
+  }
+
+  function renderCreditosList() {
+    const mostrarTodos = !state.filtroProyecto;
+    const soloPendientes = $("creditos-solo-pendientes").checked;
+    const provFiltro = $("creditos-filtro-proveedor").value;
+
+    const todosCredito = gastosFiltrados()
+      .filter((g) => g.metodo_pago === "Crédito")
+      .map((g) => ({ ...g, _credito: creditoInfo(g) }));
+    const todosPendientes = todosCredito.filter((g) => g._credito.saldo > 0.005);
+
+    // Resumen: total adeudado + antigüedad (siempre sobre TODOS los
+    // pendientes del filtro de proyecto activo, sin importar el filtro de
+    // proveedor/solo-pendientes de la lista de abajo).
+    const totalAdeudado = todosPendientes.reduce((s, g) => s + g._credito.saldo, 0);
+    $("creditos-total-adeudado").textContent = fmt(totalAdeudado);
+    const buckets = { b1: 0, b2: 0, b3: 0 };
+    todosPendientes.forEach((g) => {
+      if (g._credito.diasAntiguedad <= 30) buckets.b1 += g._credito.saldo;
+      else if (g._credito.diasAntiguedad <= 60) buckets.b2 += g._credito.saldo;
+      else buckets.b3 += g._credito.saldo;
+    });
+    $("creditos-bucket-1").textContent = fmt(buckets.b1);
+    $("creditos-bucket-2").textContent = fmt(buckets.b2);
+    $("creditos-bucket-3").textContent = fmt(buckets.b3);
+
+    // Adeudado por proveedor
+    const porProveedor = new Map();
+    todosPendientes.forEach((g) => {
+      const nombre = g.proveedores?.nombre_empresa || g.proveedor_texto || "Sin proveedor";
+      porProveedor.set(nombre, (porProveedor.get(nombre) || 0) + g._credito.saldo);
+    });
+    const provOrdenados = [...porProveedor.entries()].sort((a, b) => b[1] - a[1]);
+    $("creditos-por-proveedor").innerHTML = provOrdenados.length
+      ? provOrdenados
+          .map(
+            ([nombre, saldo]) => `
+        <div class="flex justify-between text-sm py-1 border-b border-slate-100 last:border-0">
+          <span class="text-slate-600">${esc(nombre)}</span>
+          <span class="font-medium text-slate-900">${fmt(saldo)}</span>
+        </div>`
+          )
+          .join("")
+      : '<p class="text-xs text-slate-400">Sin deudas pendientes.</p>';
+
+    // Opciones del filtro de proveedor (a partir de los proveedores que sí
+    // tienen algún gasto a crédito, no el catálogo completo)
+    const provsEnCreditos = [
+      ...new Set(todosCredito.map((g) => g.proveedores?.nombre_empresa || g.proveedor_texto).filter(Boolean)),
+    ].sort((a, b) => a.localeCompare(b, "es"));
+    const provFiltroActual = $("creditos-filtro-proveedor").value;
+    $("creditos-filtro-proveedor").innerHTML =
+      '<option value="">Todos los proveedores</option>' +
+      provsEnCreditos.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+    $("creditos-filtro-proveedor").value = provFiltroActual;
+
+    // Lista (aplica los dos filtros: proveedor y solo-pendientes)
+    let gastos = todosCredito;
+    if (soloPendientes) gastos = gastos.filter((g) => g._credito.saldo > 0.005);
+    if (provFiltro) gastos = gastos.filter((g) => (g.proveedores?.nombre_empresa || g.proveedor_texto || "") === provFiltro);
+    gastos.sort((a, b) => {
+      if (a._credito.vencido !== b._credito.vencido) return a._credito.vencido ? -1 : 1;
+      return b._credito.diasAntiguedad - a._credito.diasAntiguedad;
+    });
+
+    const cont = $("lista-creditos");
+    $("lista-creditos-vacia").classList.toggle("hidden", gastos.length > 0);
+    cont.innerHTML = gastos
+      .map((g) => {
+        const c = g._credito;
+        const proveedor = g.proveedores?.nombre_empresa || g.proveedor_texto || "Sin proveedor";
+        const proyectoTag =
+          mostrarTodos && g.proyectos?.nombre
+            ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(g.proyectos.nombre)}</span>`
+            : "";
+        let fechaLimiteBadge = "";
+        if (g.fecha_limite_pago && c.saldo > 0.005) {
+          fechaLimiteBadge = c.vencido
+            ? `<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 ml-1">vencido hace ${Math.abs(c.diasParaVencer)}d</span>`
+            : `<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 ml-1">vence en ${c.diasParaVencer}d</span>`;
+        }
+        const pagadoBadge =
+          c.saldo <= 0.005
+            ? '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 ml-1">pagado</span>'
+            : "";
+        const abonosOrdenados = (g.abonos_credito || []).slice().sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+        return `
+        <div class="credito-item bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+          <button class="credito-toggle w-full text-left flex justify-between items-start">
+            <div class="min-w-0 pr-2">
+              <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(proveedor)}</p>
+              <p class="text-xs text-slate-500 truncate">${esc(g.descripcion || g.categorias?.nombre || "")}</p>
+              <p class="text-xs text-slate-400">${fmtFecha(g.fecha)} · ${c.diasAntiguedad}d de antigüedad${fechaLimiteBadge}${pagadoBadge}</p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-xs text-slate-400">${fmt(g.monto)} original</p>
+              <p class="font-semibold ${c.saldo > 0.005 ? "text-red-600" : "text-green-600"}">${fmt(c.saldo)}</p>
+            </div>
+          </button>
+          <div class="credito-detalle hidden mt-3 pt-3 border-t border-slate-100">
+            <div class="space-y-1 mb-3">
+              ${
+                abonosOrdenados.length
+                  ? abonosOrdenados
+                      .map(
+                        (a) => `
+                <div class="flex justify-between items-center text-xs text-slate-600">
+                  <span>${fmtFecha(a.fecha)}${a.notas ? " · " + esc(a.notas) : ""}</span>
+                  <span class="flex items-center gap-2">
+                    <span class="font-medium text-slate-800">${fmt(a.monto)}</span>
+                    <button class="abono-delete-btn text-slate-400 hover:text-red-600" data-id="${a.id}">🗑️</button>
+                  </span>
+                </div>`
+                      )
+                      .join("")
+                  : '<p class="text-xs text-slate-400">Sin abonos todavía.</p>'
+              }
+            </div>
+            ${
+              g._pendiente
+                ? '<p class="text-xs text-amber-600">Este gasto todavía no se sube (sin internet) — los abonos se podrán registrar en cuanto se sincronice.</p>'
+                : c.saldo > 0.005
+                ? `
+            <form class="abono-form flex flex-wrap items-end gap-2" data-gasto-id="${g.id}">
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Fecha</label>
+                <input type="date" class="abono-fecha rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value="${new Date()
+                  .toISOString()
+                  .slice(0, 10)}" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Monto</label>
+                <input type="number" step="0.01" min="0.01" max="${c.saldo.toFixed(
+                  2
+                )}" class="abono-monto rounded-lg border border-slate-300 px-2 py-1.5 text-sm w-28" placeholder="0.00" />
+              </div>
+              <div class="flex-1 min-w-[120px]">
+                <label class="block text-[11px] text-slate-500 mb-1">Notas (opcional)</label>
+                <input type="text" class="abono-notas rounded-lg border border-slate-300 px-2 py-1.5 text-sm w-full" />
+              </div>
+              <button type="submit" class="bg-brand text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-brand-dark">Registrar abono</button>
+            </form>`
+                : ""
+            }
+          </div>
+        </div>`;
+      })
+      .join("");
+
+    cont.querySelectorAll(".credito-toggle").forEach((el) => {
+      el.addEventListener("click", () => {
+        el.parentElement.querySelector(".credito-detalle").classList.toggle("hidden");
+      });
+    });
+
+    cont.querySelectorAll(".abono-delete-btn").forEach((el) => {
+      el.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (!confirm("¿Eliminar este abono? El saldo pendiente de la deuda vuelve a subir.")) return;
+        try {
+          await DATA.deleteAbonoCredito(el.dataset.id);
+          toast("Abono eliminado");
+          await refreshGastos();
+        } catch (err) {
+          toast("Error al eliminar abono: " + err.message, true);
+        }
+      });
+    });
+
+    cont.querySelectorAll(".abono-form").forEach((form) => {
+      form.addEventListener("click", (ev) => ev.stopPropagation());
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const gastoId = form.dataset.gastoId;
+        const fecha = form.querySelector(".abono-fecha").value;
+        const monto = parseFloat(form.querySelector(".abono-monto").value);
+        const notas = form.querySelector(".abono-notas").value.trim() || null;
+        if (!monto || monto <= 0) {
+          toast("Pon un monto válido", true);
+          return;
+        }
+        try {
+          await DATA.addAbonoCredito({
+            gasto_id: gastoId,
+            fecha,
+            monto,
+            notas,
+            registrado_por: state.currentUser,
+          });
+          toast("Abono registrado");
+          await refreshGastos();
+        } catch (err) {
+          toast("Error al registrar abono: " + err.message, true);
+        }
+      });
+    });
+  }
+
+  $("creditos-filtro-proveedor").addEventListener("change", renderCreditosList);
+  $("creditos-solo-pendientes").addEventListener("change", renderCreditosList);
 
   // -------------------- ENTRADAS --------------------
   function renderEntradasList() {
@@ -1217,75 +1453,134 @@
       doc.line(marginX, y, pageWidth - marginX, y);
       y += 20;
 
-      const anchoFoto = 110;
-      const altoFoto = 110;
+      // Fotos más grandes que antes (150x150 en vez de 110x110) y en una
+      // columna a la izquierda; la nota va en una segunda columna a la
+      // derecha de las fotos, en vez de debajo — así se lee más como un
+      // reporte de dos columnas y no se desperdicia tanto espacio en blanco.
+      const anchoFoto = 150;
+      const altoFoto = 150;
       const gapFoto = 10;
-      const fotosPorFila = Math.max(1, Math.floor((pageWidth - marginX * 2 + gapFoto) / (anchoFoto + gapFoto)));
+      const gapColumnas = 20;
 
-      for (const b of entradas) {
-        // Salto de página si ni siquiera cabe el encabezado de esta entrada.
-        if (y > pageHeight - 90) {
-          doc.addPage();
-          y = 50;
+      // Agrupar por proyecto cuando el reporte incluye "todos los proyectos",
+      // para que el nombre del proyecto aparezca UNA sola vez (como encabezado
+      // de sección) y no se repita en cada avance de bitácora.
+      let gruposEntradas;
+      if (mostrarTodos) {
+        const porProyecto = new Map();
+        for (const b of entradas) {
+          const key = b.proyecto_id || "sin-proyecto";
+          if (!porProyecto.has(key)) {
+            porProyecto.set(key, { nombre: b.proyectos?.nombre || "Proyecto", items: [] });
+          }
+          porProyecto.get(key).items.push(b);
+        }
+        gruposEntradas = [...porProyecto.values()].sort((a, b2) => a.nombre.localeCompare(b2.nombre, "es"));
+      } else {
+        gruposEntradas = [{ nombre: nombreProyecto, items: entradas }];
+      }
+
+      for (const grupo of gruposEntradas) {
+        if (mostrarTodos) {
+          if (y > pageHeight - 110) {
+            doc.addPage();
+            y = 50;
+          }
+          doc.setFontSize(13);
+          doc.setFont(undefined, "bold");
+          doc.setTextColor(20, 20, 20);
+          doc.text(grupo.nombre, marginX, y);
+          y += 8;
+          doc.setDrawColor(219, 0, 46);
+          doc.setLineWidth(1.3);
+          doc.line(marginX, y, marginX + 140, y);
+          doc.setFont(undefined, "normal");
+          y += 20;
         }
 
-        doc.setFontSize(12);
-        doc.setTextColor(20, 20, 20);
-        let encabezado = fmtFecha(b.fecha);
-        if (mostrarTodos && b.proyectos?.nombre) encabezado += "  ·  " + b.proyectos.nombre;
-        if (b.capturado_por) encabezado += "  ·  " + b.capturado_por;
-        doc.text(encabezado, marginX, y);
-        y += 16;
+        for (const b of grupo.items) {
+          const fotos = b.fotos || [];
+          // Hasta 2 fotos por fila dentro de la columna de fotos (si hay 3 o
+          // más), si no, una sola columna (más ancha para la nota).
+          const fotosPorFilaCol = fotos.length >= 3 ? 2 : 1;
+          const numFilasFoto = fotos.length > 0 ? Math.ceil(fotos.length / fotosPorFilaCol) : 0;
+          const colFotoWidth = fotos.length > 0 ? fotosPorFilaCol * anchoFoto + (fotosPorFilaCol - 1) * gapFoto : 0;
+          const textX = marginX + colFotoWidth + (fotos.length > 0 ? gapColumnas : 0);
+          const textWidth = pageWidth - marginX - textX;
 
-        if (b.nota) {
           doc.setFontSize(10);
-          doc.setTextColor(60, 60, 60);
-          const lineas = doc.splitTextToSize(b.nota, pageWidth - marginX * 2);
-          for (const linea of lineas) {
-            if (y > pageHeight - 40) {
-              doc.addPage();
-              y = 50;
-            }
-            doc.text(linea, marginX, y);
-            y += 13;
-          }
-          y += 4;
-        }
+          const lineas = b.nota ? doc.splitTextToSize(b.nota, textWidth) : [];
 
-        const fotos = b.fotos || [];
-        if (fotos.length > 0) {
-          let x = marginX;
-          for (let i = 0; i < fotos.length; i++) {
-            if (y + altoFoto > pageHeight - 30) {
-              doc.addPage();
-              y = 50;
-              x = marginX;
-            }
-            try {
-              const dataUrl = await imageUrlToDataURL(fotos[i]);
-              const { width: iw, height: ih } = await tamañoImagen(dataUrl);
-              const escala = Math.min(anchoFoto / iw, altoFoto / ih);
-              const w = iw * escala;
-              const h = ih * escala;
-              doc.addImage(dataUrl, formatoImagenDesdeDataUrl(dataUrl), x + (anchoFoto - w) / 2, y + (altoFoto - h) / 2, w, h);
-            } catch (err) {
-              console.warn("No se pudo cargar una foto de bitácora para el PDF:", err);
-            }
-            const esUltimaDeFila = (i + 1) % fotosPorFila === 0;
-            if (esUltimaDeFila || i === fotos.length - 1) {
-              x = marginX;
-              y += altoFoto + gapFoto;
-            } else {
-              x += anchoFoto + gapFoto;
+          const altoFotos = numFilasFoto > 0 ? numFilasFoto * altoFoto + (numFilasFoto - 1) * gapFoto : 0;
+          const altoTexto = lineas.length * 13;
+          const altoFila = Math.max(altoFotos, altoTexto);
+
+          // Salto de página si la entrada completa (encabezado + fotos/nota)
+          // no cabe entera — así fotos y texto de una misma entrada siempre
+          // quedan alineados en la misma página.
+          if (y + 18 + altoFila > pageHeight - 30) {
+            doc.addPage();
+            y = 50;
+          }
+
+          doc.setFontSize(12);
+          doc.setTextColor(20, 20, 20);
+          let encabezado = fmtFecha(b.fecha);
+          if (b.capturado_por) encabezado += "  ·  " + b.capturado_por;
+          doc.text(encabezado, marginX, y);
+          y += 18;
+
+          const yFila = y;
+
+          if (fotos.length > 0) {
+            let x = marginX;
+            let yFoto = yFila;
+            let col = 0;
+            for (let i = 0; i < fotos.length; i++) {
+              try {
+                const dataUrl = await imageUrlToDataURL(fotos[i]);
+                const { width: iw, height: ih } = await tamañoImagen(dataUrl);
+                const escala = Math.min(anchoFoto / iw, altoFoto / ih);
+                const w = iw * escala;
+                const h = ih * escala;
+                doc.addImage(
+                  dataUrl,
+                  formatoImagenDesdeDataUrl(dataUrl),
+                  x + (anchoFoto - w) / 2,
+                  yFoto + (altoFoto - h) / 2,
+                  w,
+                  h
+                );
+              } catch (err) {
+                console.warn("No se pudo cargar una foto de bitácora para el PDF:", err);
+              }
+              col++;
+              if (col === fotosPorFilaCol) {
+                col = 0;
+                x = marginX;
+                yFoto += altoFoto + gapFoto;
+              } else {
+                x += anchoFoto + gapFoto;
+              }
             }
           }
-        }
 
-        y += 14;
-        doc.setDrawColor(230, 230, 230);
-        doc.setLineWidth(0.5);
-        doc.line(marginX, y, pageWidth - marginX, y);
-        y += 18;
+          if (lineas.length > 0) {
+            doc.setFontSize(10);
+            doc.setTextColor(60, 60, 60);
+            let yTexto = yFila;
+            for (const linea of lineas) {
+              doc.text(linea, textX, yTexto);
+              yTexto += 13;
+            }
+          }
+
+          y = yFila + altoFila + 14;
+          doc.setDrawColor(230, 230, 230);
+          doc.setLineWidth(0.5);
+          doc.line(marginX, y, pageWidth - marginX, y);
+          y += 18;
+        }
       }
 
       const sufijoRango = desde || hasta ? `_${desde || "inicio"}_a_${hasta || "hoy"}` : "";
@@ -1315,6 +1610,11 @@
         "Pagó": g.pagado_por || "",
         "Capturó": g.capturado_por || "",
         Notas: g.notas || "",
+        "Saldo pendiente (crédito)":
+          g.metodo_pago === "Crédito"
+            ? Number(g.monto) - (g.abonos_credito || []).reduce((s, a) => s + Number(a.monto), 0)
+            : "",
+        "Fecha límite de pago": g.fecha_limite_pago || "",
       }));
       const entradasRows = entradas.map((e) => ({
         ...(mostrarTodos ? { Proyecto: e.proyectos?.nombre || "" } : {}),
@@ -1537,6 +1837,13 @@
       provs.map((p) => `<option value="${p.id}">${esc(p.nombre_empresa)}</option>`).join("");
   }
 
+  // Muestra/oculta el campo de "fecha límite de pago", solo relevante
+  // cuando el método de pago elegido es "Crédito".
+  function toggleCreditoFields() {
+    $("gasto-credito-fields").classList.toggle("hidden", $("gasto-metodo").value !== "Crédito");
+  }
+  $("gasto-metodo").addEventListener("change", toggleCreditoFields);
+
   $("gasto-categoria").addEventListener("change", renderProveedorOptions);
 
   async function openForm(id) {
@@ -1562,6 +1869,8 @@
       $("gasto-metodo").value = g.metodo_pago || "Efectivo";
       $("gasto-pagador").value = g.pagado_por || state.currentUser;
       $("gasto-notas").value = g.notas || "";
+      $("gasto-fecha-limite").value = g.fecha_limite_pago || "";
+      toggleCreditoFields();
       if (g.comprobante_url) {
         $("gasto-comprobante-actual").href = g.comprobante_url;
         $("gasto-comprobante-actual").classList.remove("hidden");
@@ -1581,6 +1890,8 @@
       $("gasto-metodo").value = "Efectivo";
       $("gasto-pagador").value = state.currentUser;
       $("gasto-notas").value = "";
+      $("gasto-fecha-limite").value = "";
+      toggleCreditoFields();
     }
     showView("form");
   }
@@ -1605,6 +1916,7 @@
         pagado_por: $("gasto-pagador").value || null,
         capturado_por: state.currentUser,
         notas: $("gasto-notas").value.trim() || null,
+        fecha_limite_pago: $("gasto-metodo").value === "Crédito" ? $("gasto-fecha-limite").value || null : null,
       };
 
       const id = $("gasto-id").value || null;

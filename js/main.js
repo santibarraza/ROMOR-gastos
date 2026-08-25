@@ -1339,15 +1339,35 @@
   }
   $("presupuesto-proyecto").addEventListener("change", renderPresupuestoFormOptions);
 
+  // El presupuesto se captura como SUBTOTAL (sin IVA) — la app calcula el
+  // IVA (16%, misma tasa fija que ya se usa en el desglose de entradas) y
+  // el total ella sola, en vivo, y guarda el TOTAL en `monto` (así se
+  // sigue comparando en igualdad de condiciones contra `gastado`, que es
+  // siempre el total pagado de cada gasto).
+  function presupuestoDesdeSubtotal(subtotal) {
+    const iva = subtotal * 0.16;
+    return { iva, total: subtotal + iva };
+  }
+
+  function actualizarPresupuestoPreview() {
+    const subtotal = parseFloat($("presupuesto-monto").value) || 0;
+    const { iva, total } = presupuestoDesdeSubtotal(subtotal);
+    $("presupuesto-iva-preview").textContent = fmt(iva);
+    $("presupuesto-total-preview").textContent = fmt(total);
+  }
+  $("presupuesto-monto").addEventListener("input", actualizarPresupuestoPreview);
+
   function resetPresupuestoForm() {
     state.editingPresupuestoId = null;
     $("presupuesto-error").classList.add("hidden");
     $("presupuesto-monto").value = "";
+    $("presupuesto-avance").value = "";
     $("presupuesto-proyecto").disabled = false;
     $("presupuesto-categoria").disabled = false;
     $("presupuesto-guardar-btn").textContent = "Agregar";
     $("presupuesto-cancelar-btn").classList.add("hidden");
     renderPresupuestoFormOptions();
+    actualizarPresupuestoPreview();
   }
 
   function renderPresupuesto() {
@@ -1374,10 +1394,17 @@
     const restanteEl = $("presupuesto-total-restante");
     restanteEl.textContent = fmt(totalRestante);
     restanteEl.style.color = totalRestante >= 0 ? "#0ca30c" : "#d03b3b";
+    $("presupuesto-tfoot-presupuestado").textContent = fmt(totalPresupuestado);
+    $("presupuesto-tfoot-gastado").textContent = fmt(totalGastado);
+    const tfootRestanteEl = $("presupuesto-tfoot-restante");
+    tfootRestanteEl.textContent = fmt(totalRestante);
+    tfootRestanteEl.style.color = totalRestante >= 0 ? "#0ca30c" : "#d03b3b";
 
     const mostrarTodos = !state.filtroProyecto;
     const cont = $("presupuesto-lista");
-    $("presupuesto-vacia").classList.toggle("hidden", rows.length > 0);
+    const hayFilas = rows.length > 0;
+    $("presupuesto-tabla-wrap").classList.toggle("hidden", !hayFilas);
+    $("presupuesto-vacia").classList.toggle("hidden", hayFilas);
     cont.innerHTML = rows
       .map((r) => {
         const proyectoTag =
@@ -1389,23 +1416,39 @@
           r.pct > 100
             ? '<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 ml-1 align-middle">excedido</span>'
             : "";
+        const subtotal = Number(r.monto) / 1.16;
+        const avanceObra = r.avance_obra === null || r.avance_obra === undefined ? null : Number(r.avance_obra);
+        const avanceObraCelda =
+          avanceObra === null
+            ? '<span class="text-[11px] text-slate-400">sin capturar</span>'
+            : `
+            <div class="w-full bg-slate-100 rounded-full h-1.5 mb-1">
+              <div class="h-1.5 rounded-full bg-indigo-500" style="width:${Math.min(100, avanceObra)}%"></div>
+            </div>
+            <span class="text-[11px] text-slate-500">${avanceObra.toFixed(0)}%</span>`;
         return `
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-          <div class="flex justify-between items-start mb-1.5">
-            <div class="min-w-0 pr-2">
-              <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(r.categorias?.nombre || "")}${excedidoBadge}</p>
-              <p class="text-xs text-slate-500">${fmt(r.gastado)} gastado de ${fmt(Number(r.monto))} (${r.pct.toFixed(0)}%)</p>
+        <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-50 align-middle">
+          <td class="px-3 py-2">
+            <div class="flex items-center flex-wrap">${proyectoTag}<span class="font-medium text-slate-900">${esc(r.categorias?.nombre || "")}</span>${excedidoBadge}</div>
+          </td>
+          <td class="px-3 py-2 text-right text-slate-700 whitespace-nowrap">
+            ${fmt(Number(r.monto))}
+            <p class="text-[10px] text-slate-400">sin IVA: ${fmt(subtotal)}</p>
+          </td>
+          <td class="px-3 py-2 text-right text-slate-700 whitespace-nowrap">${fmt(r.gastado)}</td>
+          <td class="px-3 py-2">
+            <div class="w-full bg-slate-100 rounded-full h-1.5 mb-1">
+              <div class="h-1.5 rounded-full" style="width:${Math.min(100, r.pct)}%;background:${color}"></div>
             </div>
-            <div class="text-right shrink-0 flex items-start gap-2">
-              <p class="font-semibold ${r.restante >= 0 ? "text-slate-900" : "text-red-600"}">${fmt(r.restante)}</p>
-              <button type="button" class="presupuesto-edit-btn text-slate-400 hover:text-slate-700" data-id="${r.id}" title="Editar">✏️</button>
-              <button type="button" class="presupuesto-delete-btn text-slate-400 hover:text-red-600" data-id="${r.id}" title="Eliminar">🗑️</button>
-            </div>
-          </div>
-          <div class="w-full bg-slate-100 rounded-full h-1.5">
-            <div class="h-1.5 rounded-full" style="width:${Math.min(100, r.pct)}%;background:${color}"></div>
-          </div>
-        </div>`;
+            <span class="text-[11px] text-slate-500">${r.pct.toFixed(0)}%</span>
+          </td>
+          <td class="px-3 py-2">${avanceObraCelda}</td>
+          <td class="px-3 py-2 text-right font-semibold whitespace-nowrap ${r.restante >= 0 ? "text-slate-900" : "text-red-600"}">${fmt(r.restante)}</td>
+          <td class="px-3 py-2 text-center whitespace-nowrap">
+            <button type="button" class="presupuesto-edit-btn text-slate-400 hover:text-slate-700 mr-2" data-id="${r.id}" title="Editar">✏️</button>
+            <button type="button" class="presupuesto-delete-btn text-slate-400 hover:text-red-600" data-id="${r.id}" title="Eliminar">🗑️</button>
+          </td>
+        </tr>`;
       })
       .join("");
 
@@ -1425,7 +1468,12 @@
         $("presupuesto-categoria").innerHTML = `<option value="${p.categoria_id}">${esc(p.categorias?.nombre || "")}</option>`;
         $("presupuesto-proyecto").disabled = true;
         $("presupuesto-categoria").disabled = true;
-        $("presupuesto-monto").value = p.monto;
+        // El monto guardado es el TOTAL (con IVA) — la mini-forma siempre
+        // captura el subtotal, así que aquí se deriva de vuelta dividiendo
+        // entre 1.16 para que la edición sea consistente con el alta.
+        $("presupuesto-monto").value = (Number(p.monto) / 1.16).toFixed(2);
+        $("presupuesto-avance").value = p.avance_obra === null || p.avance_obra === undefined ? "" : p.avance_obra;
+        actualizarPresupuestoPreview();
         $("presupuesto-guardar-btn").textContent = "Guardar cambios";
         $("presupuesto-cancelar-btn").classList.remove("hidden");
         $("presupuesto-monto").focus();
@@ -1447,29 +1495,6 @@
       });
     });
 
-    // Partidas con gasto (dentro del filtro de proyecto activo) que no
-    // tienen ningún presupuesto asignado todavía — solo informativo, para
-    // que sea fácil notar qué falta por presupuestar si se quiere.
-    const asignadas = new Set(rows.map((r) => r.proyecto_id + "|" + r.categoria_id));
-    const sinAsignarMap = new Map();
-    gastosFiltrados().forEach((g) => {
-      const key = g.proyecto_id + "|" + g.categoria_id;
-      if (!g.categoria_id || asignadas.has(key)) return;
-      const nombre =
-        (mostrarTodos && g.proyectos?.nombre ? g.proyectos.nombre + " · " : "") + (g.categorias?.nombre || "Sin categoría");
-      sinAsignarMap.set(nombre, (sinAsignarMap.get(nombre) || 0) + Number(g.monto));
-    });
-    const sinAsignar = [...sinAsignarMap.entries()].sort((a, b) => b[1] - a[1]);
-    $("presupuesto-sin-asignar-wrap").classList.toggle("hidden", sinAsignar.length === 0);
-    $("presupuesto-sin-asignar").innerHTML = sinAsignar
-      .map(
-        ([nombre, monto]) => `
-      <div class="flex justify-between text-sm py-1 border-b border-slate-100 last:border-0">
-        <span class="text-slate-600">${esc(nombre)}</span>
-        <span class="font-medium text-slate-900">${fmt(monto)}</span>
-      </div>`
-      )
-      .join("");
   }
 
   $("presupuesto-cancelar-btn").addEventListener("click", resetPresupuestoForm);
@@ -1477,19 +1502,33 @@
   $("presupuesto-guardar-btn").addEventListener("click", async () => {
     const errEl = $("presupuesto-error");
     errEl.classList.add("hidden");
-    const monto = parseFloat($("presupuesto-monto").value);
-    if (!(monto > 0)) {
-      errEl.textContent = "Escribe un monto válido.";
+    const subtotal = parseFloat($("presupuesto-monto").value);
+    if (!(subtotal > 0)) {
+      errEl.textContent = "Escribe un subtotal válido.";
       errEl.classList.remove("hidden");
       return;
     }
+    const avanceRaw = $("presupuesto-avance").value;
+    let avanceObra = null;
+    if (avanceRaw !== "") {
+      avanceObra = parseFloat(avanceRaw);
+      if (isNaN(avanceObra) || avanceObra < 0 || avanceObra > 100) {
+        errEl.textContent = "El % de avance de obra debe estar entre 0 y 100.";
+        errEl.classList.remove("hidden");
+        return;
+      }
+    }
+    // El monto que se guarda es el TOTAL (subtotal + IVA 16%) — así se
+    // sigue comparando en igualdad de condiciones contra `gastado`, que es
+    // siempre el total pagado de cada gasto.
+    const monto = Number(presupuestoDesdeSubtotal(subtotal).total.toFixed(2));
     const btn = $("presupuesto-guardar-btn");
     btn.disabled = true;
     try {
       if (state.editingPresupuestoId) {
-        const actualizado = await DATA.savePresupuesto({ monto }, state.editingPresupuestoId);
+        const actualizado = await DATA.savePresupuesto({ monto, avance_obra: avanceObra }, state.editingPresupuestoId);
         const idx = state.presupuestos.findIndex((p) => p.id === state.editingPresupuestoId);
-        if (idx >= 0) state.presupuestos[idx] = { ...state.presupuestos[idx], monto: actualizado.monto };
+        if (idx >= 0) state.presupuestos[idx] = { ...state.presupuestos[idx], monto: actualizado.monto, avance_obra: actualizado.avance_obra };
         toast("Presupuesto actualizado");
       } else {
         const proyectoId = $("presupuesto-proyecto").value;
@@ -1499,7 +1538,7 @@
           errEl.classList.remove("hidden");
           return;
         }
-        const nuevo = await DATA.savePresupuesto({ proyecto_id: proyectoId, categoria_id: categoriaId, monto }, null);
+        const nuevo = await DATA.savePresupuesto({ proyecto_id: proyectoId, categoria_id: categoriaId, monto, avance_obra: avanceObra }, null);
         state.presupuestos.push({
           ...nuevo,
           proyectos: state.proyectos.find((p) => p.id === proyectoId) ? { nombre: state.proyectos.find((p) => p.id === proyectoId).nombre } : null,

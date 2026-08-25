@@ -278,6 +278,37 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- PRESUPUESTO POR PARTIDA --------------------
+  // Cuánto se le asigna a cada partida (categoría) de un proyecto, para
+  // compararlo contra lo ya gastado ahí. Se traen TODOS siempre (no se
+  // filtran por proyecto_id) porque el apartado "Presupuesto" respeta el
+  // filtro de proyecto del dashboard igual que gastos/entradas, filtrando
+  // del lado del cliente.
+  async function getPresupuestos() {
+    const { data, error } = await sb
+      .from("presupuestos")
+      .select("*, proyectos(nombre), categorias(nombre)");
+    if (error) throw error;
+    return data;
+  }
+
+  async function savePresupuesto(presupuesto, id) {
+    if (id) {
+      const { data, error } = await sb.from("presupuestos").update(presupuesto).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await sb.from("presupuestos").insert(presupuesto).select().single();
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  async function deletePresupuesto(id) {
+    const { error } = await sb.from("presupuestos").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   // -------------------- RECORDATORIOS --------------------
   // Tareas/trámites con fecha, opcionalmente ligados a un proyecto (o
   // generales si proyecto_id es null). Se traen TODOS siempre (no se
@@ -340,6 +371,9 @@ window.DATA = (function () {
     deleteGastoDocumento,
     addGastoImpuesto,
     deleteGastoImpuesto,
+    getPresupuestos,
+    savePresupuesto,
+    deletePresupuesto,
     getRecordatorios,
     saveRecordatorio,
     deleteRecordatorio,

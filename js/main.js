@@ -25,6 +25,13 @@
     // elemento trae {tipo, nombre, es_retencion, porcentaje} y, si ya se
     // guardó en la base de datos, también un "id".
     formImpuestos: [],
+    // Presupuesto por partida (ver sección "PRESUPUESTO POR PARTIDA" más
+    // abajo). Cada elemento trae {id, proyecto_id, categoria_id, monto,
+    // proyectos:{nombre}, categorias:{nombre}} tal como llega de Supabase.
+    presupuestos: [],
+    // Si no es null, la mini-forma de presupuesto está EDITANDO ese
+    // registro (en vez de agregando uno nuevo).
+    editingPresupuestoId: null,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -318,10 +325,11 @@
         const nDocumentos = state.documentos.filter((d) => d.proyecto_id === id).length;
         const nBitacora = state.bitacora.filter((b) => b.proyecto_id === id).length;
         const nRecordatorios = state.recordatorios.filter((r) => r.proyecto_id === id).length;
+        const nPresupuestos = state.presupuestos.filter((p) => p.proyecto_id === id).length;
         const detalle =
-          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios
-            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora y ${nRecordatorios} recordatorio(s) de este proyecto.`
-            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora ni recordatorios registrados.";
+          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios || nPresupuestos
+            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora, ${nRecordatorios} recordatorio(s) y ${nPresupuestos} presupuesto(s) de partida de este proyecto.`
+            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora, recordatorios ni presupuestos registrados.";
         if (!confirm(`¿Eliminar el proyecto "${nombre}"?${detalle} Esta acción no se puede deshacer.`)) return;
         try {
           await DATA.deleteProyecto(id);
@@ -331,7 +339,9 @@
           state.documentos = state.documentos.filter((d) => d.proyecto_id !== id);
           state.bitacora = state.bitacora.filter((b) => b.proyecto_id !== id);
           state.recordatorios = state.recordatorios.filter((r) => r.proyecto_id !== id);
+          state.presupuestos = state.presupuestos.filter((p) => p.proyecto_id !== id);
           renderRecordatoriosCard();
+          renderPresupuesto();
           if (state.filtroProyecto === id) state.filtroProyecto = "";
           if (state.currentProject?.id === id) {
             state.currentProject = null;
@@ -784,18 +794,20 @@
       // Traemos TODOS los gastos/entradas/documentos/bitácora (de todos los
       // proyectos) y filtramos en el cliente — así la vista general y el
       // filtro por proyecto no requieren volver a pedir datos al servidor.
-      const [gastos, entradas, documentos, bitacora, recordatorios] = await Promise.all([
+      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos] = await Promise.all([
         DATA.getGastos(),
         DATA.getEntradas(),
         DATA.getDocumentos(),
         DATA.getBitacora(),
         DATA.getRecordatorios(),
+        DATA.getPresupuestos(),
       ]);
       state.gastos = gastos;
       state.entradas = entradas;
       state.documentos = documentos;
       state.bitacora = bitacora;
       state.recordatorios = recordatorios;
+      state.presupuestos = presupuestos;
     } catch (err) {
       toast("Error cargando datos: " + err.message, true);
       return;
@@ -808,6 +820,7 @@
     renderBitacoraList();
     renderCreditosList();
     renderRecordatoriosCard();
+    renderPresupuesto();
   }
 
   // Compatibilidad: algunas partes del código piden solo refrescar gastos/entradas
@@ -830,6 +843,7 @@
     renderDocumentosList();
     renderBitacoraList();
     renderCreditosList();
+    renderPresupuesto();
   });
 
   function gastosFiltrados() {
@@ -893,12 +907,13 @@
   }
 
   // -------------------- TABS GASTOS / ENTRADAS / DOCUMENTOS / BITÁCORA --------------------
-  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos"];
+  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos", "presupuesto"];
   $("tab-gastos-btn").addEventListener("click", () => switchTab("gastos"));
   $("tab-entradas-btn").addEventListener("click", () => switchTab("entradas"));
   $("tab-documentos-btn").addEventListener("click", () => switchTab("documentos"));
   $("tab-bitacora-btn").addEventListener("click", () => switchTab("bitacora"));
   $("tab-creditos-btn").addEventListener("click", () => switchTab("creditos"));
+  $("tab-presupuesto-btn").addEventListener("click", () => switchTab("presupuesto"));
 
   function switchTab(tab) {
     TABS.forEach((t) => {
@@ -1279,6 +1294,228 @@
 
   $("creditos-filtro-proveedor").addEventListener("change", renderCreditosList);
   $("creditos-solo-pendientes").addEventListener("change", renderCreditosList);
+
+  // -------------------- PRESUPUESTO POR PARTIDA --------------------
+  // Cuánto se le asigna a cada partida (categoría) de un proyecto, para
+  // compararlo contra lo que ya se ha gastado ahí y no pasarse del
+  // presupuesto. Cada renglón de `presupuestos` es un proyecto+categoría
+  // específico (nunca se mezclan varios proyectos en un solo renglón,
+  // aunque el filtro esté en "🌐 Todos los proyectos" — en ese caso
+  // simplemente se listan los renglones de todos los proyectos, cada uno
+  // con su etiqueta de proyecto, igual que ya se hace en Gastos/Créditos).
+  function presupuestosFiltrados() {
+    return state.filtroProyecto
+      ? state.presupuestos.filter((p) => p.proyecto_id === state.filtroProyecto)
+      : state.presupuestos;
+  }
+
+  // Categorías que TODAVÍA no tienen presupuesto asignado para un
+  // proyecto dado (para no ofrecer agregar una que ya existe — hay que
+  // editarla en vez de duplicarla, hay un índice único proyecto+categoría).
+  function categoriasSinPresupuesto(proyectoId) {
+    const yaAsignadas = new Set(
+      state.presupuestos.filter((p) => p.proyecto_id === proyectoId).map((p) => p.categoria_id)
+    );
+    return state.categorias.filter((c) => !yaAsignadas.has(c.id));
+  }
+
+  // Vuelve a llenar los selects de proyecto/categoría de la mini-forma.
+  // Se llama al renderizar el apartado completo y cada vez que cambia el
+  // proyecto elegido en la propia mini-forma (para refrescar qué
+  // categorías le faltan presupuesto a ESE proyecto en particular).
+  function renderPresupuestoFormOptions() {
+    const selProyecto = $("presupuesto-proyecto");
+    const proyectoActual = selProyecto.value || state.filtroProyecto || defaultProyectoId() || state.proyectos[0]?.id || "";
+    selProyecto.innerHTML = state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
+    selProyecto.value = proyectoActual;
+
+    const selCategoria = $("presupuesto-categoria");
+    const disponibles = categoriasSinPresupuesto(selProyecto.value);
+    if (disponibles.length === 0) {
+      selCategoria.innerHTML = '<option value="">— No quedan partidas sin presupuesto en este proyecto —</option>';
+    } else {
+      selCategoria.innerHTML = disponibles.map((c) => `<option value="${c.id}">${esc(c.nombre)}</option>`).join("");
+    }
+  }
+  $("presupuesto-proyecto").addEventListener("change", renderPresupuestoFormOptions);
+
+  function resetPresupuestoForm() {
+    state.editingPresupuestoId = null;
+    $("presupuesto-error").classList.add("hidden");
+    $("presupuesto-monto").value = "";
+    $("presupuesto-proyecto").disabled = false;
+    $("presupuesto-categoria").disabled = false;
+    $("presupuesto-guardar-btn").textContent = "Agregar";
+    $("presupuesto-cancelar-btn").classList.add("hidden");
+    renderPresupuestoFormOptions();
+  }
+
+  function renderPresupuesto() {
+    // Mantiene la mini-forma coherente si, por ejemplo, se borró desde
+    // otra pestaña el proyecto que tenía seleccionado.
+    if (!state.editingPresupuestoId) renderPresupuestoFormOptions();
+
+    const rows = presupuestosFiltrados().map((p) => {
+      const gastado = state.gastos
+        .filter((g) => g.proyecto_id === p.proyecto_id && g.categoria_id === p.categoria_id)
+        .reduce((s, g) => s + Number(g.monto), 0);
+      const pct = Number(p.monto) > 0 ? (gastado / Number(p.monto)) * 100 : 0;
+      return { ...p, gastado, pct, restante: Number(p.monto) - gastado };
+    });
+    // Las partidas más cerca de pasarse (o ya pasadas) del presupuesto se
+    // muestran primero — es justo lo que se quiere vigilar de un vistazo.
+    rows.sort((a, b) => b.pct - a.pct);
+
+    const totalPresupuestado = rows.reduce((s, r) => s + Number(r.monto), 0);
+    const totalGastado = rows.reduce((s, r) => s + r.gastado, 0);
+    const totalRestante = totalPresupuestado - totalGastado;
+    $("presupuesto-total-presupuestado").textContent = fmt(totalPresupuestado);
+    $("presupuesto-total-gastado").textContent = fmt(totalGastado);
+    const restanteEl = $("presupuesto-total-restante");
+    restanteEl.textContent = fmt(totalRestante);
+    restanteEl.style.color = totalRestante >= 0 ? "#0ca30c" : "#d03b3b";
+
+    const mostrarTodos = !state.filtroProyecto;
+    const cont = $("presupuesto-lista");
+    $("presupuesto-vacia").classList.toggle("hidden", rows.length > 0);
+    cont.innerHTML = rows
+      .map((r) => {
+        const proyectoTag =
+          mostrarTodos && r.proyectos?.nombre
+            ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(r.proyectos.nombre)}</span>`
+            : "";
+        const color = r.pct > 100 ? "#d03b3b" : r.pct >= 80 ? "#f5a623" : "#0ca30c";
+        const excedidoBadge =
+          r.pct > 100
+            ? '<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 ml-1 align-middle">excedido</span>'
+            : "";
+        return `
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+          <div class="flex justify-between items-start mb-1.5">
+            <div class="min-w-0 pr-2">
+              <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(r.categorias?.nombre || "")}${excedidoBadge}</p>
+              <p class="text-xs text-slate-500">${fmt(r.gastado)} gastado de ${fmt(Number(r.monto))} (${r.pct.toFixed(0)}%)</p>
+            </div>
+            <div class="text-right shrink-0 flex items-start gap-2">
+              <p class="font-semibold ${r.restante >= 0 ? "text-slate-900" : "text-red-600"}">${fmt(r.restante)}</p>
+              <button type="button" class="presupuesto-edit-btn text-slate-400 hover:text-slate-700" data-id="${r.id}" title="Editar">✏️</button>
+              <button type="button" class="presupuesto-delete-btn text-slate-400 hover:text-red-600" data-id="${r.id}" title="Eliminar">🗑️</button>
+            </div>
+          </div>
+          <div class="w-full bg-slate-100 rounded-full h-1.5">
+            <div class="h-1.5 rounded-full" style="width:${Math.min(100, r.pct)}%;background:${color}"></div>
+          </div>
+        </div>`;
+      })
+      .join("");
+
+    cont.querySelectorAll(".presupuesto-edit-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const p = state.presupuestos.find((x) => x.id === btn.dataset.id);
+        if (!p) return;
+        state.editingPresupuestoId = p.id;
+        $("presupuesto-error").classList.add("hidden");
+        renderPresupuestoFormOptions();
+        // Al editar, el proyecto y la categoría son la llave del renglón
+        // (hay un índice único proyecto+categoría) — no se pueden cambiar
+        // aquí, solo el monto. Se agregan sus opciones aparte porque
+        // categoriasSinPresupuesto() las habría excluido por ya estar
+        // asignadas.
+        $("presupuesto-proyecto").innerHTML = `<option value="${p.proyecto_id}">${esc(p.proyectos?.nombre || "")}</option>`;
+        $("presupuesto-categoria").innerHTML = `<option value="${p.categoria_id}">${esc(p.categorias?.nombre || "")}</option>`;
+        $("presupuesto-proyecto").disabled = true;
+        $("presupuesto-categoria").disabled = true;
+        $("presupuesto-monto").value = p.monto;
+        $("presupuesto-guardar-btn").textContent = "Guardar cambios";
+        $("presupuesto-cancelar-btn").classList.remove("hidden");
+        $("presupuesto-monto").focus();
+      });
+    });
+
+    cont.querySelectorAll(".presupuesto-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("¿Eliminar el presupuesto de esta partida? Esta acción no se puede deshacer.")) return;
+        try {
+          await DATA.deletePresupuesto(btn.dataset.id);
+          state.presupuestos = state.presupuestos.filter((p) => p.id !== btn.dataset.id);
+          if (state.editingPresupuestoId === btn.dataset.id) resetPresupuestoForm();
+          toast("Presupuesto eliminado");
+          renderPresupuesto();
+        } catch (err) {
+          toast("Error al eliminar: " + err.message, true);
+        }
+      });
+    });
+
+    // Partidas con gasto (dentro del filtro de proyecto activo) que no
+    // tienen ningún presupuesto asignado todavía — solo informativo, para
+    // que sea fácil notar qué falta por presupuestar si se quiere.
+    const asignadas = new Set(rows.map((r) => r.proyecto_id + "|" + r.categoria_id));
+    const sinAsignarMap = new Map();
+    gastosFiltrados().forEach((g) => {
+      const key = g.proyecto_id + "|" + g.categoria_id;
+      if (!g.categoria_id || asignadas.has(key)) return;
+      const nombre =
+        (mostrarTodos && g.proyectos?.nombre ? g.proyectos.nombre + " · " : "") + (g.categorias?.nombre || "Sin categoría");
+      sinAsignarMap.set(nombre, (sinAsignarMap.get(nombre) || 0) + Number(g.monto));
+    });
+    const sinAsignar = [...sinAsignarMap.entries()].sort((a, b) => b[1] - a[1]);
+    $("presupuesto-sin-asignar-wrap").classList.toggle("hidden", sinAsignar.length === 0);
+    $("presupuesto-sin-asignar").innerHTML = sinAsignar
+      .map(
+        ([nombre, monto]) => `
+      <div class="flex justify-between text-sm py-1 border-b border-slate-100 last:border-0">
+        <span class="text-slate-600">${esc(nombre)}</span>
+        <span class="font-medium text-slate-900">${fmt(monto)}</span>
+      </div>`
+      )
+      .join("");
+  }
+
+  $("presupuesto-cancelar-btn").addEventListener("click", resetPresupuestoForm);
+
+  $("presupuesto-guardar-btn").addEventListener("click", async () => {
+    const errEl = $("presupuesto-error");
+    errEl.classList.add("hidden");
+    const monto = parseFloat($("presupuesto-monto").value);
+    if (!(monto > 0)) {
+      errEl.textContent = "Escribe un monto válido.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    const btn = $("presupuesto-guardar-btn");
+    btn.disabled = true;
+    try {
+      if (state.editingPresupuestoId) {
+        const actualizado = await DATA.savePresupuesto({ monto }, state.editingPresupuestoId);
+        const idx = state.presupuestos.findIndex((p) => p.id === state.editingPresupuestoId);
+        if (idx >= 0) state.presupuestos[idx] = { ...state.presupuestos[idx], monto: actualizado.monto };
+        toast("Presupuesto actualizado");
+      } else {
+        const proyectoId = $("presupuesto-proyecto").value;
+        const categoriaId = $("presupuesto-categoria").value;
+        if (!proyectoId || !categoriaId) {
+          errEl.textContent = "Elige un proyecto y una partida.";
+          errEl.classList.remove("hidden");
+          return;
+        }
+        const nuevo = await DATA.savePresupuesto({ proyecto_id: proyectoId, categoria_id: categoriaId, monto }, null);
+        state.presupuestos.push({
+          ...nuevo,
+          proyectos: state.proyectos.find((p) => p.id === proyectoId) ? { nombre: state.proyectos.find((p) => p.id === proyectoId).nombre } : null,
+          categorias: state.categorias.find((c) => c.id === categoriaId) ? { nombre: state.categorias.find((c) => c.id === categoriaId).nombre } : null,
+        });
+        toast("Presupuesto agregado");
+      }
+      resetPresupuestoForm();
+      renderPresupuesto();
+    } catch (err) {
+      errEl.textContent = "No se pudo guardar: " + err.message;
+      errEl.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   // -------------------- ENTRADAS --------------------
   function renderEntradasList() {

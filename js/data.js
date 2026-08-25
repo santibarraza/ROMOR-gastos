@@ -94,7 +94,7 @@ window.DATA = (function () {
     let q = sb
       .from("gastos")
       .select(
-        "*, categorias(nombre), proveedores(nombre_empresa), proyectos(nombre), abonos_credito(*), gasto_documentos(*)"
+        "*, categorias(nombre), proveedores(nombre_empresa), proyectos(nombre), abonos_credito(*), gasto_documentos(*), gasto_impuestos(*)"
       )
       .order("fecha", { ascending: false })
       .order("created_at", { ascending: false });
@@ -261,6 +261,23 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- IMPUESTOS DE UN GASTO (varios por gasto) --------------------
+  // Un gasto puede llevar uno o varios impuestos (IVA, retenciones, IEPS,
+  // u "Otro" libre) — cada fila de gasto_impuestos guarda solo el % y si
+  // se suma (traslado) o se resta (retención) del subtotal; el monto en
+  // pesos de cada impuesto se calcula siempre en el cliente, nunca se
+  // guarda aquí.
+  async function addGastoImpuesto(imp) {
+    const { data, error } = await sb.from("gasto_impuestos").insert(imp).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function deleteGastoImpuesto(id) {
+    const { error } = await sb.from("gasto_impuestos").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   // -------------------- RECORDATORIOS --------------------
   // Tareas/trámites con fecha, opcionalmente ligados a un proyecto (o
   // generales si proyecto_id es null). Se traen TODOS siempre (no se
@@ -321,6 +338,8 @@ window.DATA = (function () {
     deleteAbonoCredito,
     addGastoDocumento,
     deleteGastoDocumento,
+    addGastoImpuesto,
+    deleteGastoImpuesto,
     getRecordatorios,
     saveRecordatorio,
     deleteRecordatorio,

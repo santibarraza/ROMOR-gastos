@@ -20,6 +20,11 @@
     // Filtro de la vista general: "" = todos los proyectos juntos.
     filtroProyecto: "",
     editingId: null,
+    // Impuestos del gasto que se está creando/editando en el formulario
+    // ahora mismo (ver sección "IMPUESTOS DE GASTO" más abajo). Cada
+    // elemento trae {tipo, nombre, es_retencion, porcentaje} y, si ya se
+    // guardó en la base de datos, también un "id".
+    formImpuestos: [],
   };
 
   const $ = (id) => document.getElementById(id);
@@ -1017,11 +1022,7 @@
               ? `<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 ${fmt(saldo)}</span>`
               : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 pagado</span>';
         }
-        let ivaTag = "";
-        if (g.con_iva) {
-          const { iva } = desgloseIva(Number(g.monto));
-          ivaTag = `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5 mr-1 align-middle">IVA ${fmt(iva)}</span>`;
-        }
+        const ivaTag = gastoImpuestosBadge(g);
         return `
         <button data-id="${g.id}" data-pendiente="${g._pendiente ? 1 : 0}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
           <div class="flex justify-between items-start">
@@ -1887,8 +1888,15 @@
         Proveedor: g.proveedores?.nombre_empresa || g.proveedor_texto || "",
         Descripción: g.descripcion || "",
         Monto: Number(g.monto),
-        "Subtotal (sin IVA)": g.con_iva ? Number(desgloseIva(Number(g.monto)).subtotal.toFixed(2)) : "",
-        "IVA (16%)": g.con_iva ? Number(desgloseIva(Number(g.monto)).iva.toFixed(2)) : "",
+        "Subtotal (sin impuestos)": (() => {
+          const imps = g.gasto_impuestos || [];
+          if (!imps.length) return "";
+          const calc = calcularImpuestos(Number(g.monto), imps);
+          return calc.ok ? Number(calc.subtotal.toFixed(2)) : "";
+        })(),
+        "Impuestos aplicados": (g.gasto_impuestos || [])
+          .map((imp) => `${imp.nombre} ${fmtPct(imp.porcentaje)}%`)
+          .join("; "),
         "Método de pago": g.metodo_pago || "",
         "Pagó": g.pagado_por || "",
         "Capturó": g.capturado_por || "",
@@ -2129,26 +2137,200 @@
   }
   $("gasto-metodo").addEventListener("change", toggleCreditoFields);
 
-  // Desglose de IVA (16%): el "monto" del gasto sigue siendo el total pagado
-  // (no cambia ningún cálculo existente); esto solo muestra cuánto de ese
-  // total corresponde a subtotal e IVA cuando el gasto marca "incluye IVA".
+  // Desglose de IVA (16%) para ENTRADAS: se queda igual que antes, es un
+  // desglose simple de un solo impuesto fijo. El de GASTOS ahora es el
+  // sistema de varios impuestos de abajo ("IMPUESTOS DE GASTO").
   function desgloseIva(monto) {
     const subtotal = monto / 1.16;
     return { subtotal, iva: monto - subtotal };
   }
-  function actualizarDesgloseIva() {
-    const monto = parseFloat($("gasto-monto").value);
-    const p = $("gasto-iva-desglose");
-    if ($("gasto-con-iva").checked && monto > 0) {
-      const { subtotal, iva } = desgloseIva(monto);
-      p.textContent = `Subtotal: ${fmt(subtotal)} · IVA: ${fmt(iva)}`;
-      p.classList.remove("hidden");
+
+  // -------------------- IMPUESTOS DE GASTO (varios por gasto) --------------------
+  // Catálogo de impuestos con su nombre a mostrar, si se SUMAN al subtotal
+  // (traslados, como el IVA) o se RESTAN (retenciones), y un % sugerido por
+  // default (editable) — "IEPS" no tiene default fijo porque varía mucho
+  // según el producto, y "OTRO" es 100% libre (nombre, %, y si suma o resta
+  // los elige la persona).
+  const IMPUESTOS_CATALOGO = {
+    IVA: { nombre: "IVA", es_retencion: false, pctDefault: 16 },
+    RET_IVA: { nombre: "Retención de IVA", es_retencion: true, pctDefault: 10.6667 },
+    RET_ISR: { nombre: "Retención de ISR", es_retencion: true, pctDefault: 10 },
+    IEPS: { nombre: "IEPS", es_retencion: false, pctDefault: null },
+  };
+
+  function fmtPct(n) {
+    return Number(n).toFixed(4).replace(/\.?0+$/, "");
+  }
+
+  // El "monto" del gasto sigue siendo el total que se pagó, ya con todos
+  // sus impuestos aplicados (sumados o restados). Para mostrar el
+  // desglose hay que ir "hacia atrás": si subtotal=S, cada traslado suma
+  // S*%/100 y cada retención resta S*%/100, así que
+  //   monto = S * (1 + Σ%traslados/100 - Σ%retenciones/100)
+  // y por lo tanto S = monto / factor. Devuelve ok:false si la mezcla de
+  // porcentajes no tiene sentido (factor <= 0, ej. retenciones que suman
+  // más del 100%).
+  function calcularImpuestos(monto, impuestos) {
+    let factor = 1;
+    for (const imp of impuestos) {
+      const pct = Number(imp.porcentaje) || 0;
+      factor += (imp.es_retencion ? -1 : 1) * (pct / 100);
+    }
+    if (!(factor > 0) || !(monto > 0)) return { ok: false };
+    const subtotal = monto / factor;
+    const detalles = impuestos.map((imp) => ({
+      ...imp,
+      monto: subtotal * ((Number(imp.porcentaje) || 0) / 100),
+    }));
+    return { ok: true, subtotal, detalles };
+  }
+
+  // Etiqueta compacta para la lista de Gastos (no recalcula montos ahí,
+  // solo indica qué impuestos trae, igual de compacto que el badge 💳 de
+  // crédito o el de "+N más" de recordatorios).
+  function gastoImpuestosBadge(g) {
+    const imps = g.gasto_impuestos || [];
+    if (!imps.length) return "";
+    const extra = imps.length > 1 ? ` +${imps.length - 1} más` : "";
+    return `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5 mr-1 align-middle">🧾 ${esc(imps[0].nombre)}${extra}</span>`;
+  }
+
+  // Ajusta el % sugerido y muestra/oculta los campos de "Otro" según el
+  // tipo de impuesto elegido en el menú de la mini-forma para agregar uno.
+  function actualizarCamposImpuesto() {
+    const tipo = $("gasto-impuesto-tipo").value;
+    const esOtro = tipo === "OTRO";
+    $("gasto-impuesto-otro-fields").classList.toggle("hidden", !esOtro);
+    if (esOtro) {
+      $("gasto-impuesto-pct").value = "";
     } else {
-      p.classList.add("hidden");
+      const def = IMPUESTOS_CATALOGO[tipo];
+      $("gasto-impuesto-pct").value = def && def.pctDefault != null ? def.pctDefault : "";
     }
   }
-  $("gasto-monto").addEventListener("input", actualizarDesgloseIva);
-  $("gasto-con-iva").addEventListener("change", actualizarDesgloseIva);
+  $("gasto-impuesto-tipo").addEventListener("change", actualizarCamposImpuesto);
+
+  function resetMiniFormImpuesto() {
+    $("gasto-impuesto-tipo").value = "IVA";
+    $("gasto-impuesto-nombre").value = "";
+    $("gasto-impuesto-signo").value = "suma";
+    $("gasto-impuesto-error").classList.add("hidden");
+    actualizarCamposImpuesto();
+  }
+
+  // Vuelve a calcular y mostrar el desglose (subtotal + cada impuesto +
+  // total) debajo de la mini-forma, sin tocar la lista de impuestos ya
+  // agregados (se llama también cada vez que cambia el monto).
+  function actualizarGastoImpuestosDesglose() {
+    const desc = $("gasto-impuestos-desglose");
+    const monto = parseFloat($("gasto-monto").value);
+    const impuestos = state.formImpuestos;
+    if (!impuestos.length || !(monto > 0)) {
+      desc.classList.add("hidden");
+      return;
+    }
+    const calc = calcularImpuestos(monto, impuestos);
+    if (!calc.ok) {
+      desc.innerHTML = `<p class="text-red-600">Esa combinación de porcentajes no es válida (revisa las retenciones).</p>`;
+      desc.classList.remove("hidden");
+      return;
+    }
+    const lineas = [`Subtotal: ${fmt(calc.subtotal)}`].concat(
+      calc.detalles.map(
+        (d) => `${d.es_retencion ? "−" : "+"} ${esc(d.nombre)} (${fmtPct(d.porcentaje)}%): ${fmt(d.monto)}`
+      )
+    );
+    lineas.push(`Total: ${fmt(monto)}`);
+    desc.innerHTML = lineas.map((l) => `<p>${l}</p>`).join("");
+    desc.classList.remove("hidden");
+  }
+  $("gasto-monto").addEventListener("input", actualizarGastoImpuestosDesglose);
+
+  // Lista de impuestos ya agregados a este gasto, dentro de su formulario,
+  // cada uno con un botón para borrarlo. Si el gasto ya existe (tiene id)
+  // y hay internet, agregar/borrar se hace de inmediato contra Supabase
+  // (igual que los documentos); si es un gasto nuevo sin guardar todavía,
+  // se guardan aquí temporalmente y se suben al guardar el formulario.
+  function renderGastoImpuestosLista() {
+    const cont = $("gasto-impuestos-lista");
+    cont.innerHTML = state.formImpuestos
+      .map(
+        (imp, i) => `
+      <div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
+        <span class="text-sm text-slate-700 truncate">${esc(imp.nombre)} · ${fmtPct(imp.porcentaje)}% (${imp.es_retencion ? "resta" : "suma"})</span>
+        <button type="button" class="gasto-imp-delete-btn text-red-500 hover:text-red-700 text-sm shrink-0" data-index="${i}">🗑️</button>
+      </div>`
+      )
+      .join("");
+    cont.querySelectorAll(".gasto-imp-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const idx = Number(btn.dataset.index);
+        const imp = state.formImpuestos[idx];
+        if (!imp) return;
+        if (imp.id) {
+          if (!confirm("¿Eliminar este impuesto? Esta acción no se puede deshacer.")) return;
+          try {
+            await DATA.deleteGastoImpuesto(imp.id);
+          } catch (err) {
+            toast("No se pudo eliminar el impuesto: " + err.message, true);
+            return;
+          }
+        }
+        state.formImpuestos.splice(idx, 1);
+        renderGastoImpuestosLista();
+        toast("Impuesto eliminado");
+      });
+    });
+    actualizarGastoImpuestosDesglose();
+  }
+
+  $("gasto-impuesto-add-btn").addEventListener("click", async () => {
+    const errEl = $("gasto-impuesto-error");
+    errEl.classList.add("hidden");
+    const tipo = $("gasto-impuesto-tipo").value;
+    const pct = parseFloat($("gasto-impuesto-pct").value);
+    if (!(pct >= 0)) {
+      errEl.textContent = "Escribe un porcentaje válido.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    let nombre, esRetencion;
+    if (tipo === "OTRO") {
+      nombre = $("gasto-impuesto-nombre").value.trim();
+      if (!nombre) {
+        errEl.textContent = "Escribe el nombre del impuesto.";
+        errEl.classList.remove("hidden");
+        return;
+      }
+      esRetencion = $("gasto-impuesto-signo").value === "resta";
+    } else {
+      nombre = IMPUESTOS_CATALOGO[tipo].nombre;
+      esRetencion = IMPUESTOS_CATALOGO[tipo].es_retencion;
+    }
+    const nuevo = { tipo, nombre, es_retencion: esRetencion, porcentaje: pct };
+
+    const gastoId = $("gasto-id").value;
+    if (gastoId && navigator.onLine) {
+      try {
+        const saved = await DATA.addGastoImpuesto({
+          gasto_id: gastoId,
+          tipo: nuevo.tipo,
+          nombre: nuevo.nombre,
+          es_retencion: nuevo.es_retencion,
+          porcentaje: nuevo.porcentaje,
+        });
+        nuevo.id = saved.id;
+      } catch (err) {
+        errEl.textContent = "No se pudo guardar el impuesto: " + err.message;
+        errEl.classList.remove("hidden");
+        return;
+      }
+    }
+    state.formImpuestos.push(nuevo);
+    renderGastoImpuestosLista();
+    resetMiniFormImpuesto();
+    toast("Impuesto agregado");
+  });
 
   $("gasto-categoria").addEventListener("change", renderProveedorOptions);
 
@@ -2212,8 +2394,9 @@
       $("gasto-notas").value = g.notas || "";
       $("gasto-fecha-limite").value = g.fecha_limite_pago || "";
       toggleCreditoFields();
-      $("gasto-con-iva").checked = !!g.con_iva;
-      actualizarDesgloseIva();
+      state.formImpuestos = (g.gasto_impuestos || []).map((imp) => ({ ...imp }));
+      resetMiniFormImpuesto();
+      renderGastoImpuestosLista();
       renderGastoDocumentos(g.gasto_documentos || []);
     } else {
       $("form-title").textContent = "Nuevo gasto";
@@ -2232,8 +2415,9 @@
       $("gasto-notas").value = "";
       $("gasto-fecha-limite").value = "";
       toggleCreditoFields();
-      $("gasto-con-iva").checked = false;
-      actualizarDesgloseIva();
+      state.formImpuestos = [];
+      resetMiniFormImpuesto();
+      renderGastoImpuestosLista();
     }
     showView("form");
   }
@@ -2259,7 +2443,8 @@
         capturado_por: state.currentUser,
         notas: $("gasto-notas").value.trim() || null,
         fecha_limite_pago: $("gasto-metodo").value === "Crédito" ? $("gasto-fecha-limite").value || null : null,
-        con_iva: $("gasto-con-iva").checked,
+        // con_iva ya no se toca desde el formulario — el desglose de
+        // impuestos ahora vive en la tabla gasto_impuestos (ver más abajo).
       };
 
       // Si el usuario escribió un proveedor que no está en la lista, se
@@ -2298,6 +2483,9 @@
         if (files.length) {
           toast("Sin internet: los documentos no se subieron, agrégalos después editando el gasto", true);
         }
+        if (state.formImpuestos.some((imp) => !imp.id)) {
+          toast("Sin internet: los impuestos no se guardaron, agrégalos después editando el gasto", true);
+        }
         const localId = queueOutbox("gasto", payload);
         if (proyectoId) rememberProyecto(proyectoId);
         addPendingGastoToState(payload, localId);
@@ -2324,6 +2512,24 @@
           } catch (err) {
             toast(`No se pudo subir "${file.name}": ` + err.message, true);
           }
+        }
+      }
+
+      // Impuestos agregados mientras el gasto era nuevo (sin id todavía) o
+      // agregados sin conexión a un gasto ya existente — los que ya tenían
+      // "id" se guardaron al instante cuando se agregaron, así que aquí
+      // solo se suben los que faltan.
+      for (const imp of state.formImpuestos.filter((i) => !i.id)) {
+        try {
+          await DATA.addGastoImpuesto({
+            gasto_id: gastoId,
+            tipo: imp.tipo,
+            nombre: imp.nombre,
+            es_retencion: imp.es_retencion,
+            porcentaje: imp.porcentaje,
+          });
+        } catch (err) {
+          toast(`No se pudo guardar el impuesto "${imp.nombre}": ` + err.message, true);
         }
       }
 

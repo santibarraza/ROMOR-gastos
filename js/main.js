@@ -1366,6 +1366,7 @@
     $("presupuesto-categoria").disabled = false;
     $("presupuesto-guardar-btn").textContent = "Agregar";
     $("presupuesto-cancelar-btn").classList.add("hidden");
+    $("presupuesto-eliminar-btn").classList.add("hidden");
     renderPresupuestoFormOptions();
     actualizarPresupuestoPreview();
   }
@@ -1375,16 +1376,27 @@
     // otra pestaña el proyecto que tenía seleccionado.
     if (!state.editingPresupuestoId) renderPresupuestoFormOptions();
 
+    // El gastado por partida ya no se muestra en la tabla (a petición de
+    // Santiago, quedó como un apartado de planeación: presupuesto + avance
+    // de obra) pero se sigue calculando para las 3 tarjetas de resumen de
+    // arriba (Presupuestado/Gastado/Restante), que sí se dejaron.
     const rows = presupuestosFiltrados().map((p) => {
       const gastado = state.gastos
         .filter((g) => g.proyecto_id === p.proyecto_id && g.categoria_id === p.categoria_id)
         .reduce((s, g) => s + Number(g.monto), 0);
-      const pct = Number(p.monto) > 0 ? (gastado / Number(p.monto)) * 100 : 0;
-      return { ...p, gastado, pct, restante: Number(p.monto) - gastado };
+      return { ...p, gastado };
     });
-    // Las partidas más cerca de pasarse (o ya pasadas) del presupuesto se
-    // muestran primero — es justo lo que se quiere vigilar de un vistazo.
-    rows.sort((a, b) => b.pct - a.pct);
+    // Orden: por proyecto (para que no queden mezcladas, aunque ya no se
+    // muestre la etiqueta de proyecto) y dentro de cada uno, por el orden
+    // de catálogo de la partida (mismo "orden" que ya usan los selects de
+    // categoría en toda la app) — ya no se ordena por % gastado porque esa
+    // columna se quitó de la tabla.
+    const ordenCategoria = (categoriaId) => state.categorias.find((c) => c.id === categoriaId)?.orden ?? 999;
+    rows.sort((a, b) => {
+      const proy = (a.proyectos?.nombre || "").localeCompare(b.proyectos?.nombre || "");
+      if (proy !== 0) return proy;
+      return ordenCategoria(a.categoria_id) - ordenCategoria(b.categoria_id);
+    });
 
     const totalPresupuestado = rows.reduce((s, r) => s + Number(r.monto), 0);
     const totalGastado = rows.reduce((s, r) => s + r.gastado, 0);
@@ -1395,27 +1407,13 @@
     restanteEl.textContent = fmt(totalRestante);
     restanteEl.style.color = totalRestante >= 0 ? "#0ca30c" : "#d03b3b";
     $("presupuesto-tfoot-presupuestado").textContent = fmt(totalPresupuestado);
-    $("presupuesto-tfoot-gastado").textContent = fmt(totalGastado);
-    const tfootRestanteEl = $("presupuesto-tfoot-restante");
-    tfootRestanteEl.textContent = fmt(totalRestante);
-    tfootRestanteEl.style.color = totalRestante >= 0 ? "#0ca30c" : "#d03b3b";
 
-    const mostrarTodos = !state.filtroProyecto;
     const cont = $("presupuesto-lista");
     const hayFilas = rows.length > 0;
     $("presupuesto-tabla-wrap").classList.toggle("hidden", !hayFilas);
     $("presupuesto-vacia").classList.toggle("hidden", hayFilas);
     cont.innerHTML = rows
       .map((r) => {
-        const proyectoTag =
-          mostrarTodos && r.proyectos?.nombre
-            ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(r.proyectos.nombre)}</span>`
-            : "";
-        const color = r.pct > 100 ? "#d03b3b" : r.pct >= 80 ? "#f5a623" : "#0ca30c";
-        const excedidoBadge =
-          r.pct > 100
-            ? '<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 ml-1 align-middle">excedido</span>'
-            : "";
         const subtotal = Number(r.monto) / 1.16;
         const avanceObra = r.avance_obra === null || r.avance_obra === undefined ? null : Number(r.avance_obra);
         const avanceObraCelda =
@@ -1429,24 +1427,15 @@
         return `
         <tr class="border-b border-slate-100 last:border-0 hover:bg-slate-50 align-middle">
           <td class="px-3 py-2">
-            <div class="flex items-center flex-wrap">${proyectoTag}<span class="font-medium text-slate-900">${esc(r.categorias?.nombre || "")}</span>${excedidoBadge}</div>
+            <span class="font-medium text-slate-900">${esc(r.categorias?.nombre || "")}</span>
           </td>
           <td class="px-3 py-2 text-right text-slate-700 whitespace-nowrap">
             ${fmt(Number(r.monto))}
             <p class="text-[10px] text-slate-400">sin IVA: ${fmt(subtotal)}</p>
           </td>
-          <td class="px-3 py-2 text-right text-slate-700 whitespace-nowrap">${fmt(r.gastado)}</td>
-          <td class="px-3 py-2">
-            <div class="w-full bg-slate-100 rounded-full h-1.5 mb-1">
-              <div class="h-1.5 rounded-full" style="width:${Math.min(100, r.pct)}%;background:${color}"></div>
-            </div>
-            <span class="text-[11px] text-slate-500">${r.pct.toFixed(0)}%</span>
-          </td>
           <td class="px-3 py-2">${avanceObraCelda}</td>
-          <td class="px-3 py-2 text-right font-semibold whitespace-nowrap ${r.restante >= 0 ? "text-slate-900" : "text-red-600"}">${fmt(r.restante)}</td>
           <td class="px-3 py-2 text-center whitespace-nowrap">
-            <button type="button" class="presupuesto-edit-btn text-slate-400 hover:text-slate-700 mr-2" data-id="${r.id}" title="Editar">✏️</button>
-            <button type="button" class="presupuesto-delete-btn text-slate-400 hover:text-red-600" data-id="${r.id}" title="Eliminar">🗑️</button>
+            <button type="button" class="presupuesto-edit-btn text-xs font-medium text-brand hover:underline" data-id="${r.id}">Editar</button>
           </td>
         </tr>`;
       })
@@ -1476,28 +1465,31 @@
         actualizarPresupuestoPreview();
         $("presupuesto-guardar-btn").textContent = "Guardar cambios";
         $("presupuesto-cancelar-btn").classList.remove("hidden");
+        // El botón de eliminar solo aparece mientras se está editando esa
+        // partida — así no queda un ícono de borrar siempre a la vista en
+        // cada fila de la tabla, a petición de Santiago.
+        $("presupuesto-eliminar-btn").classList.remove("hidden");
         $("presupuesto-monto").focus();
       });
     });
-
-    cont.querySelectorAll(".presupuesto-delete-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        if (!confirm("¿Eliminar el presupuesto de esta partida? Esta acción no se puede deshacer.")) return;
-        try {
-          await DATA.deletePresupuesto(btn.dataset.id);
-          state.presupuestos = state.presupuestos.filter((p) => p.id !== btn.dataset.id);
-          if (state.editingPresupuestoId === btn.dataset.id) resetPresupuestoForm();
-          toast("Presupuesto eliminado");
-          renderPresupuesto();
-        } catch (err) {
-          toast("Error al eliminar: " + err.message, true);
-        }
-      });
-    });
-
   }
 
   $("presupuesto-cancelar-btn").addEventListener("click", resetPresupuestoForm);
+
+  $("presupuesto-eliminar-btn").addEventListener("click", async () => {
+    const id = state.editingPresupuestoId;
+    if (!id) return;
+    if (!confirm("¿Eliminar el presupuesto de esta partida? Esta acción no se puede deshacer.")) return;
+    try {
+      await DATA.deletePresupuesto(id);
+      state.presupuestos = state.presupuestos.filter((p) => p.id !== id);
+      resetPresupuestoForm();
+      toast("Presupuesto eliminado");
+      renderPresupuesto();
+    } catch (err) {
+      toast("Error al eliminar: " + err.message, true);
+    }
+  });
 
   $("presupuesto-guardar-btn").addEventListener("click", async () => {
     const errEl = $("presupuesto-error");

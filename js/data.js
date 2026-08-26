@@ -225,6 +225,16 @@ window.DATA = (function () {
     return data;
   }
 
+  // Edita un avance ya existente (proyecto, fecha, nota y/o su arreglo de
+  // fotos completo — quien llama arma el arreglo final de `fotos`,
+  // incluyendo cuáles se conservan y cuáles nuevas se agregaron). No
+  // cambia `capturado_por`, se deja con quien lo creó originalmente.
+  async function saveBitacoraEntry(entrada, id) {
+    const { data, error } = await sb.from("bitacora").update(entrada).eq("id", id).select().single();
+    if (error) throw error;
+    return data;
+  }
+
   async function deleteBitacoraEntry(id) {
     const { error } = await sb.from("bitacora").delete().eq("id", id);
     if (error) throw error;
@@ -364,6 +374,7 @@ window.DATA = (function () {
     deleteDocumento,
     getBitacora,
     addBitacoraEntry,
+    saveBitacoraEntry,
     deleteBitacoraEntry,
     addAbonoCredito,
     deleteAbonoCredito,

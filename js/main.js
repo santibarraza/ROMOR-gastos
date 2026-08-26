@@ -11,6 +11,12 @@
     entradas: [],
     documentos: [],
     bitacora: [],
+    // Avance de bitácora que se está editando ahora mismo en
+    // view-bitacora-form (null = se está dando de alta uno nuevo), y las
+    // fotos que ya tenía guardadas ese avance (se puede quitar alguna antes
+    // de guardar — ver renderBitacoraFotosActuales).
+    editingBitacoraId: null,
+    bitacoraFotosActuales: [],
     recordatorios: [],
     recordatoriosFiltro: "pendientes",
     currentUser: localStorage.getItem("romor_user") || null,
@@ -1825,13 +1831,27 @@
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
           <div class="flex justify-between items-start gap-2">
             <p class="text-xs text-slate-400 mb-1">${proyectoTag}${pendienteTag}${fmtFecha(b.fecha)}${b.capturado_por ? " · " + esc(b.capturado_por) : ""}</p>
-            <button data-id="${esc(b.id)}" class="bitacora-delete-btn shrink-0 text-slate-400 hover:text-red-600 text-lg px-1 leading-none">🗑️</button>
+            <div class="flex items-center gap-1 shrink-0">
+              <button data-id="${esc(b.id)}" class="bitacora-edit-btn text-slate-400 hover:text-slate-700 text-lg px-1 leading-none" title="Editar">✏️</button>
+              <button data-id="${esc(b.id)}" class="bitacora-delete-btn text-slate-400 hover:text-red-600 text-lg px-1 leading-none" title="Eliminar">🗑️</button>
+            </div>
           </div>
           ${b.nota ? `<p class="text-sm text-slate-800 mb-2">${esc(b.nota)}</p>` : ""}
           ${fotos ? `<div class="flex gap-2 flex-wrap">${fotos}</div>` : ""}
         </div>`;
       })
       .join("");
+    cont.querySelectorAll(".bitacora-edit-btn").forEach((el) => {
+      el.addEventListener("click", () => {
+        const entrada = state.bitacora.find((b) => b.id === el.dataset.id);
+        if (!entrada) return;
+        if (entrada._pendiente) {
+          toast("Este avance todavía no se sube — espera a que tengas internet para poder editarlo.", true);
+          return;
+        }
+        openBitacoraForm(entrada);
+      });
+    });
     cont.querySelectorAll(".bitacora-delete-btn").forEach((el) => {
       el.addEventListener("click", async () => {
         if (!confirm("¿Eliminar este avance de bitácora? Esta acción no se puede deshacer.")) return;
@@ -1857,15 +1877,62 @@
   }
 
   $("bitacora-add-open-btn").addEventListener("click", () => openBitacoraForm());
-  $("bitacora-form-back-btn").addEventListener("click", () => showView("dashboard"));
+  $("bitacora-form-back-btn").addEventListener("click", () => {
+    state.editingBitacoraId = null;
+    showView("dashboard");
+  });
 
-  function openBitacoraForm() {
+  // Muestra las fotos que ya tenía guardadas el avance que se está
+  // editando (con una ✕ para quitarla de la lista antes de guardar). No
+  // borra nada de Storage al quitarla aquí — solo se excluye del arreglo
+  // `fotos` que se va a guardar, mismo criterio ya usado en el resto de la
+  // app para "documentos" (nunca se limpia el archivo del bucket).
+  function renderBitacoraFotosActuales() {
+    const wrap = $("bitacora-fotos-actuales-wrap");
+    if (!state.editingBitacoraId) {
+      wrap.classList.add("hidden");
+      return;
+    }
+    wrap.classList.remove("hidden");
+    const fotos = state.bitacoraFotosActuales || [];
+    const cont = $("bitacora-fotos-actuales");
+    cont.innerHTML = fotos.length
+      ? fotos
+          .map(
+            (url, i) => `
+      <div class="relative">
+        <img src="${esc(url)}" class="w-16 h-16 object-cover rounded-lg border border-slate-200" />
+        <button type="button" class="bitacora-foto-quitar-btn absolute -top-1.5 -right-1.5 bg-white border border-slate-300 rounded-full w-5 h-5 text-xs text-red-600 leading-none shadow-sm" data-index="${i}" title="Quitar">✕</button>
+      </div>`
+          )
+          .join("")
+      : '<p class="text-xs text-slate-400">Sin fotos guardadas.</p>';
+    cont.querySelectorAll(".bitacora-foto-quitar-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.bitacoraFotosActuales.splice(Number(btn.dataset.index), 1);
+        renderBitacoraFotosActuales();
+      });
+    });
+  }
+
+  // Sin argumento: abre el formulario para dar de alta un avance nuevo.
+  // Con `entrada`: lo abre en modo edición, precargado con sus datos.
+  function openBitacoraForm(entrada) {
     $("bitacora-form-error").classList.add("hidden");
     $("bitacora-proyecto").innerHTML = state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
-    $("bitacora-proyecto").value = defaultProyectoId();
-    $("bitacora-fecha").value = new Date().toISOString().slice(0, 10);
-    $("bitacora-nota").value = "";
+    state.editingBitacoraId = entrada ? entrada.id : null;
+    state.bitacoraFotosActuales = entrada ? [...(entrada.fotos || [])] : [];
+    $("bitacora-form-title").textContent = entrada ? "Editar avance" : "Nuevo avance";
+    $("bitacora-save-btn").textContent = "Guardar";
+    $("bitacora-fotos-label").textContent = entrada ? "Agregar fotos nuevas" : "Fotos";
+    $("bitacora-fotos-help").textContent = entrada
+      ? "Estas fotos se agregan a las que ya tiene el avance (no las reemplazan). Necesitas conexión para subirlas."
+      : "Puedes elegir varias fotos a la vez. Necesitas conexión para subirlas — si no hay internet, se guarda solo la nota y puedes agregar las fotos después editando.";
+    $("bitacora-proyecto").value = entrada ? entrada.proyecto_id : defaultProyectoId();
+    $("bitacora-fecha").value = entrada ? entrada.fecha : new Date().toISOString().slice(0, 10);
+    $("bitacora-nota").value = entrada ? entrada.nota || "" : "";
     $("bitacora-fotos").value = "";
+    renderBitacoraFotosActuales();
     showView("bitacora-form");
   }
 
@@ -1877,14 +1944,49 @@
     btn.textContent = "Guardando...";
     try {
       const proyectoId = $("bitacora-proyecto").value || defaultProyectoId() || null;
+      const fecha = $("bitacora-fecha").value;
+      const nota = $("bitacora-nota").value.trim() || null;
+      const files = Array.from($("bitacora-fotos").files || []);
+
+      if (state.editingBitacoraId) {
+        // Modo edición: el avance ya existe en Supabase (los que todavía
+        // están "sin subir" no se pueden editar — se bloquea desde el
+        // botón ✏️ de la lista), así que aquí siempre hace falta internet
+        // para poder subir fotos nuevas si se agregaron.
+        if (files.length > 0 && !navigator.onLine) {
+          throw new Error("Necesitas conexión a internet para agregar fotos nuevas.");
+        }
+        let fotos = [...(state.bitacoraFotosActuales || [])];
+        if (files.length > 0) {
+          const subidas = await Promise.all(files.map((f) => DATA.uploadComprobante(f)));
+          fotos = fotos.concat(subidas.map((s) => s.url));
+        }
+        const payload = { proyecto_id: proyectoId, fecha, nota, fotos };
+        const id = state.editingBitacoraId;
+        await DATA.saveBitacoraEntry(payload, id);
+        const idx = state.bitacora.findIndex((b) => b.id === id);
+        if (idx >= 0) {
+          state.bitacora[idx] = {
+            ...state.bitacora[idx],
+            ...payload,
+            proyectos: state.proyectos.find((p) => p.id === proyectoId) || null,
+          };
+        }
+        if (proyectoId) rememberProyecto(proyectoId);
+        state.editingBitacoraId = null;
+        toast("Avance actualizado");
+        showView("dashboard");
+        renderBitacoraList();
+        return;
+      }
+
       const payload = {
         proyecto_id: proyectoId,
-        fecha: $("bitacora-fecha").value,
-        nota: $("bitacora-nota").value.trim() || null,
+        fecha,
+        nota,
         fotos: [],
         capturado_por: state.currentUser,
       };
-      const files = Array.from($("bitacora-fotos").files || []);
 
       if (!navigator.onLine) {
         // Sin internet no se pueden subir fotos: se guarda solo la nota en la

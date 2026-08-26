@@ -398,6 +398,7 @@
         <div class="flex items-center gap-3">
           <button type="button" id="presupuesto-guardar-btn" class="bg-brand text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-brand-dark">Agregar</button>
           <button type="button" id="presupuesto-cancelar-btn" class="text-sm text-slate-500 underline hidden">Cancelar edición</button>
+          <button type="button" id="presupuesto-eliminar-btn" class="text-sm text-red-600 underline hidden ml-auto">Eliminar</button>
         </div>
       </div>
 
@@ -407,10 +408,7 @@
             <tr class="bg-slate-50 border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
               <th class="px-3 py-2 font-medium">Partida</th>
               <th class="px-3 py-2 font-medium text-right">Presupuestado</th>
-              <th class="px-3 py-2 font-medium text-right">Gastado</th>
-              <th class="px-3 py-2 font-medium w-32">% Gastado</th>
               <th class="px-3 py-2 font-medium w-32">Avance de obra</th>
-              <th class="px-3 py-2 font-medium text-right">Restante</th>
               <th class="px-3 py-2 font-medium text-center">Acciones</th>
             </tr>
           </thead>
@@ -419,10 +417,7 @@
             <tr class="border-t-2 border-slate-300 bg-slate-50 font-semibold text-slate-900">
               <td class="px-3 py-2">Total</td>
               <td id="presupuesto-tfoot-presupuestado" class="px-3 py-2 text-right whitespace-nowrap">$0</td>
-              <td id="presupuesto-tfoot-gastado" class="px-3 py-2 text-right whitespace-nowrap">$0</td>
               <td></td>
-              <td></td>
-              <td id="presupuesto-tfoot-restante" class="px-3 py-2 text-right whitespace-nowrap">$0</td>
               <td></td>
             </tr>
           </tfoot>

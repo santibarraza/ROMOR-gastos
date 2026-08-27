@@ -2047,6 +2047,22 @@
     });
   }
 
+  // Dibuja el logo respetando su proporción real (antes se forzaba a un
+  // tamaño fijo de 90x27pt, que no corresponde a la proporción real del PNG
+  // — 900x182px, ~4.95:1 — y por eso se veía deformado/"apachurrado" en los
+  // PDF). Aquí se mide la imagen real y se calcula el ancho a partir del
+  // alto deseado, para que nunca se estire.
+  async function dibujarLogoPdf(doc, x, y, altoObjetivo) {
+    try {
+      const logoData = await imageUrlToDataURL("assets/logo.png");
+      const { width: iw, height: ih } = await tamañoImagen(logoData);
+      const anchoObjetivo = altoObjetivo * (iw / ih);
+      doc.addImage(logoData, "PNG", x, y, anchoObjetivo, altoObjetivo);
+    } catch (err) {
+      console.warn("No se pudo cargar el logo para el PDF:", err);
+    }
+  }
+
   $("bitacora-pdf-btn").addEventListener("click", async () => {
     const btn = $("bitacora-pdf-btn");
     const desde = $("bitacora-pdf-desde").value || null;
@@ -2079,14 +2095,10 @@
       const pageWidth = doc.internal.pageSize.getWidth();
       const pageHeight = doc.internal.pageSize.getHeight();
       const marginX = 40;
+      const footerY = pageHeight - 26;
       let y = 50;
 
-      try {
-        const logoData = await imageUrlToDataURL("assets/logo.png");
-        doc.addImage(logoData, "PNG", marginX, 24, 90, 27);
-      } catch (err) {
-        console.warn("No se pudo cargar el logo para el PDF:", err);
-      }
+      await dibujarLogoPdf(doc, marginX, 22, 26);
 
       doc.setFontSize(16);
       doc.setTextColor(20, 20, 20);
@@ -2103,16 +2115,34 @@
       doc.setDrawColor(219, 0, 46);
       doc.setLineWidth(1);
       doc.line(marginX, y, pageWidth - marginX, y);
-      y += 20;
+      y += 16;
+      doc.setFontSize(9);
+      doc.setTextColor(140, 140, 140);
+      doc.text(
+        `${entradas.length} avance${entradas.length === 1 ? "" : "s"} registrado${entradas.length === 1 ? "" : "s"}`,
+        marginX,
+        y
+      );
+      y += 22;
 
-      // Fotos más grandes que antes (150x150 en vez de 110x110) y en una
-      // columna a la izquierda; la nota va en una segunda columna a la
-      // derecha de las fotos, en vez de debajo — así se lee más como un
-      // reporte de dos columnas y no se desperdicia tanto espacio en blanco.
-      const anchoFoto = 150;
-      const altoFoto = 150;
+      // Cada avance se dibuja como una "tarjeta" (fondo gris muy claro,
+      // esquinas redondeadas, franja roja de marca junto a la fecha) en vez
+      // de solo texto y fotos sueltos — se ve más como un reporte cuidado y
+      // menos como una lista plana. La nota va a lo ancho completo de la
+      // tarjeta, arriba de las fotos (ya no al lado, como antes), y las
+      // fotos se acomodan en una cuadrícula pareja de hasta 3 por fila,
+      // cada una dentro de su propio marco con fondo claro del mismo
+      // tamaño — así la cuadrícula queda alineada aunque las fotos
+      // originales sean de proporciones distintas (vertical/horizontal/
+      // cuadrada). Ya no se muestra quién capturó el avance (a petición de
+      // Santiago) — solo la fecha.
+      const cardPad = 14;
+      const cardWidth = pageWidth - marginX * 2;
+      const innerWidth = cardWidth - cardPad * 2;
+      const anchoFoto = 140;
+      const altoFoto = 140;
       const gapFoto = 10;
-      const gapColumnas = 20;
+      const fotosPorFila = Math.max(1, Math.min(3, Math.floor((innerWidth + gapFoto) / (anchoFoto + gapFoto))));
 
       // Agrupar por proyecto cuando el reporte incluye "todos los proyectos",
       // para que el nombre del proyecto aparezca UNA sola vez (como encabezado
@@ -2134,72 +2164,93 @@
 
       for (const grupo of gruposEntradas) {
         if (mostrarTodos) {
-          if (y > pageHeight - 110) {
+          if (y + 40 > footerY - 10) {
             doc.addPage();
             y = 50;
           }
-          doc.setFontSize(13);
+          doc.setFillColor(219, 0, 46);
+          doc.roundedRect(marginX, y, cardWidth, 24, 4, 4, "F");
+          doc.setFontSize(12);
           doc.setFont(undefined, "bold");
-          doc.setTextColor(20, 20, 20);
-          doc.text(grupo.nombre, marginX, y);
-          y += 8;
-          doc.setDrawColor(219, 0, 46);
-          doc.setLineWidth(1.3);
-          doc.line(marginX, y, marginX + 140, y);
+          doc.setTextColor(255, 255, 255);
+          doc.text(grupo.nombre, marginX + 10, y + 16);
           doc.setFont(undefined, "normal");
-          y += 20;
+          doc.setTextColor(20, 20, 20);
+          y += 24 + 16;
         }
 
         for (const b of grupo.items) {
           const fotos = b.fotos || [];
-          // Hasta 2 fotos por fila dentro de la columna de fotos (si hay 3 o
-          // más), si no, una sola columna (más ancha para la nota).
-          const fotosPorFilaCol = fotos.length >= 3 ? 2 : 1;
-          const numFilasFoto = fotos.length > 0 ? Math.ceil(fotos.length / fotosPorFilaCol) : 0;
-          const colFotoWidth = fotos.length > 0 ? fotosPorFilaCol * anchoFoto + (fotosPorFilaCol - 1) * gapFoto : 0;
-          const textX = marginX + colFotoWidth + (fotos.length > 0 ? gapColumnas : 0);
-          const textWidth = pageWidth - marginX - textX;
 
           doc.setFontSize(10);
-          const lineas = b.nota ? doc.splitTextToSize(b.nota, textWidth) : [];
+          const lineas = b.nota ? doc.splitTextToSize(b.nota, innerWidth) : [];
 
-          const altoFotos = numFilasFoto > 0 ? numFilasFoto * altoFoto + (numFilasFoto - 1) * gapFoto : 0;
-          const altoTexto = lineas.length * 13;
-          const altoFila = Math.max(altoFotos, altoTexto);
+          const filasFoto = fotos.length > 0 ? Math.ceil(fotos.length / fotosPorFila) : 0;
+          const altoFotosBloque = filasFoto > 0 ? filasFoto * altoFoto + (filasFoto - 1) * gapFoto : 0;
 
-          // Salto de página si la entrada completa (encabezado + fotos/nota)
-          // no cabe entera — así fotos y texto de una misma entrada siempre
-          // quedan alineados en la misma página.
-          if (y + 18 + altoFila > pageHeight - 30) {
+          const cardHeight =
+            cardPad * 2 +
+            18 +
+            (lineas.length > 0 ? 10 + lineas.length * 13 : 0) +
+            (fotos.length > 0 ? 14 + altoFotosBloque : 0);
+
+          // Salto de página si la tarjeta completa no cabe entera, para que
+          // nunca se corte una tarjeta a la mitad entre dos páginas.
+          if (y + cardHeight > footerY - 10) {
             doc.addPage();
             y = 50;
           }
 
-          doc.setFontSize(12);
-          doc.setTextColor(20, 20, 20);
-          let encabezado = fmtFecha(b.fecha);
-          if (b.capturado_por) encabezado += "  ·  " + b.capturado_por;
-          doc.text(encabezado, marginX, y);
-          y += 18;
+          const cardTop = y;
+          doc.setFillColor(249, 248, 247);
+          doc.setDrawColor(232, 230, 227);
+          doc.setLineWidth(0.75);
+          doc.roundedRect(marginX, cardTop, cardWidth, cardHeight, 6, 6, "FD");
 
-          const yFila = y;
+          const cx = marginX + cardPad;
+          let cy = cardTop + cardPad + 12;
+
+          doc.setFillColor(219, 0, 46);
+          doc.roundedRect(cx, cy - 9, 4, 13, 1, 1, "F");
+          doc.setFontSize(12);
+          doc.setFont(undefined, "bold");
+          doc.setTextColor(20, 20, 20);
+          doc.text(fmtFecha(b.fecha), cx + 10, cy);
+          doc.setFont(undefined, "normal");
+
+          cy = cardTop + cardPad + 18;
+
+          if (lineas.length > 0) {
+            cy += 10;
+            doc.setFontSize(10);
+            doc.setTextColor(70, 70, 70);
+            for (const linea of lineas) {
+              doc.text(linea, cx, cy);
+              cy += 13;
+            }
+          }
 
           if (fotos.length > 0) {
-            let x = marginX;
-            let yFoto = yFila;
+            cy += 14;
             let col = 0;
+            let fx = cx;
+            let fy = cy;
             for (let i = 0; i < fotos.length; i++) {
+              doc.setFillColor(238, 236, 233);
+              doc.setDrawColor(222, 220, 216);
+              doc.setLineWidth(0.5);
+              doc.roundedRect(fx, fy, anchoFoto, altoFoto, 4, 4, "FD");
               try {
                 const dataUrl = await imageUrlToDataURL(fotos[i]);
                 const { width: iw, height: ih } = await tamañoImagen(dataUrl);
-                const escala = Math.min(anchoFoto / iw, altoFoto / ih);
+                const escala = Math.min((anchoFoto - 8) / iw, (altoFoto - 8) / ih);
                 const w = iw * escala;
                 const h = ih * escala;
                 doc.addImage(
                   dataUrl,
                   formatoImagenDesdeDataUrl(dataUrl),
-                  x + (anchoFoto - w) / 2,
-                  yFoto + (altoFoto - h) / 2,
+                  fx + (anchoFoto - w) / 2,
+                  fy + (altoFoto - h) / 2,
                   w,
                   h
                 );
@@ -2207,32 +2258,27 @@
                 console.warn("No se pudo cargar una foto de bitácora para el PDF:", err);
               }
               col++;
-              if (col === fotosPorFilaCol) {
+              if (col === fotosPorFila) {
                 col = 0;
-                x = marginX;
-                yFoto += altoFoto + gapFoto;
+                fx = cx;
+                fy += altoFoto + gapFoto;
               } else {
-                x += anchoFoto + gapFoto;
+                fx += anchoFoto + gapFoto;
               }
             }
           }
 
-          if (lineas.length > 0) {
-            doc.setFontSize(10);
-            doc.setTextColor(60, 60, 60);
-            let yTexto = yFila;
-            for (const linea of lineas) {
-              doc.text(linea, textX, yTexto);
-              yTexto += 13;
-            }
-          }
-
-          y = yFila + altoFila + 14;
-          doc.setDrawColor(230, 230, 230);
-          doc.setLineWidth(0.5);
-          doc.line(marginX, y, pageWidth - marginX, y);
-          y += 18;
+          y = cardTop + cardHeight + 14;
         }
+      }
+
+      // Numeración de páginas al final, ya con el total real de páginas.
+      const totalPaginas = doc.internal.getNumberOfPages();
+      for (let p = 1; p <= totalPaginas; p++) {
+        doc.setPage(p);
+        doc.setFontSize(8);
+        doc.setTextColor(160, 160, 160);
+        doc.text(`Página ${p} de ${totalPaginas}`, pageWidth / 2, footerY + 8, { align: "center" });
       }
 
       const sufijoRango = desde || hasta ? `_${desde || "inicio"}_a_${hasta || "hoy"}` : "";
@@ -2346,12 +2392,7 @@
       const marginX = 40;
       let y = 50;
 
-      try {
-        const logoData = await imageUrlToDataURL("assets/logo.png");
-        doc.addImage(logoData, "PNG", marginX, 24, 90, 27);
-      } catch (err) {
-        console.warn("No se pudo cargar el logo para el PDF:", err);
-      }
+      await dibujarLogoPdf(doc, marginX, 24, 24);
 
       doc.setFontSize(16);
       doc.setTextColor(20, 20, 20);

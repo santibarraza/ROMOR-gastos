@@ -222,6 +222,7 @@
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
         <p class="text-xs text-slate-500">Saldo</p>
         <p id="total-saldo" class="text-xl font-display tracking-wide">$0</p>
+        <p id="total-saldo-nota" class="text-[10px] text-slate-400 mt-0.5 hidden"></p>
       </div>
     </div>
 
@@ -319,7 +320,7 @@
 
     <!-- ===== Panel de créditos (gastos con método de pago "Crédito") ===== -->
     <div id="panel-creditos" class="hidden">
-      <p class="text-xs text-slate-500 mb-3">Gastos capturados con método de pago "Crédito" — deudas con proveedores, con abonos parciales hasta saldarlas.</p>
+      <p class="text-xs text-slate-500 mb-3">Gastos pagados a crédito (con el proveedor, o con una línea de crédito general de la obra) — con abonos parciales hasta saldarlos.</p>
 
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-3">
         <p class="text-xs text-slate-500">Total adeudado</p>
@@ -342,7 +343,7 @@
       </div>
 
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-3">
-        <h2 class="text-sm font-semibold text-slate-700 mb-2">Adeudado por proveedor</h2>
+        <h2 class="text-sm font-semibold text-slate-700 mb-2">Adeudado por proveedor / acreedor</h2>
         <div id="creditos-por-proveedor" class="space-y-1"></div>
       </div>
 
@@ -358,6 +359,17 @@
 
       <div id="lista-creditos" class="space-y-2"></div>
       <p id="lista-creditos-vacia" class="text-center text-slate-400 text-sm py-8 hidden">No hay gastos a crédito.</p>
+
+      <div class="mt-6 pt-4 border-t border-slate-200">
+        <h2 class="text-sm font-semibold text-slate-700 mb-1">Préstamos entre proyectos</h2>
+        <p class="text-xs text-slate-500 mb-3">Gastos pagados con dinero de otro proyecto — mientras no se regresen, el Saldo del dashboard de ambos proyectos se ajusta solo.</p>
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-3">
+          <p class="text-xs text-slate-500">Total prestado pendiente de regresar</p>
+          <p id="prestamos-total-pendiente" class="text-2xl font-display tracking-wide text-red-600">$0</p>
+        </div>
+        <div id="lista-prestamos" class="space-y-2"></div>
+        <p id="lista-prestamos-vacia" class="text-center text-slate-400 text-sm py-8 hidden">No hay préstamos entre proyectos.</p>
+      </div>
     </div>
 
     <!-- ===== Panel de presupuesto ===== -->
@@ -609,6 +621,29 @@
         <label class="block text-sm font-medium text-slate-700 mb-1">Fecha límite de pago (opcional)</label>
         <input id="gasto-fecha-limite" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
         <p class="text-[11px] text-slate-400 mt-1">Este gasto va a aparecer en la pestaña "Créditos" hasta que registres abonos que lo salden por completo.</p>
+      </div>
+
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">¿De dónde sale el dinero?</label>
+        <select id="gasto-fuente-fondos" class="w-full rounded-lg border border-slate-300 px-3 py-2.5">
+          <option value="propio">Fondos propios del proyecto</option>
+          <option value="credito">Crédito / línea de crédito de la obra</option>
+          <option value="prestamo">Dinero de otro proyecto</option>
+        </select>
+        <p class="text-[11px] text-slate-400 mt-1">Es independiente del método de pago de arriba — por ejemplo, puedes pagar en Efectivo con dinero que en realidad salió de una línea de crédito o de otro proyecto.</p>
+      </div>
+
+      <div id="gasto-fuente-credito-fields" class="hidden">
+        <label class="block text-sm font-medium text-slate-700 mb-1">¿A quién se le debe? (opcional)</label>
+        <input id="gasto-credito-acreedor" type="text" placeholder="Ej. Tarjeta de crédito Banorte"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+        <p class="text-[11px] text-slate-400 mt-1">Si lo dejas vacío se muestra como "Línea de crédito de la obra" en la pestaña Créditos.</p>
+      </div>
+
+      <div id="gasto-fuente-prestamo-fields" class="hidden">
+        <label class="block text-sm font-medium text-slate-700 mb-1">¿Qué proyecto prestó el dinero?</label>
+        <select id="gasto-proyecto-prestamista" class="w-full rounded-lg border border-slate-300 px-3 py-2.5"></select>
+        <p class="text-[11px] text-slate-400 mt-1">Este gasto va a aparecer como préstamo pendiente en la pestaña "Créditos" hasta que registres abonos que lo regresen por completo. Mientras tanto, el Saldo de ambos proyectos se ajusta solo.</p>
       </div>
 
       <div>

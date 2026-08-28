@@ -825,6 +825,7 @@
     renderDocumentosList();
     renderBitacoraList();
     renderCreditosList();
+    renderPrestamosList();
     renderRecordatoriosCard();
     renderPresupuesto();
   }
@@ -849,6 +850,7 @@
     renderDocumentosList();
     renderBitacoraList();
     renderCreditosList();
+    renderPrestamosList();
     renderPresupuesto();
   });
 
@@ -934,17 +936,48 @@
     $("fab-add").classList.toggle("hidden", tab !== "gastos");
   }
 
+  // Cuando un gasto se pagó con "dinero de otro proyecto" (fuente_fondos =
+  // "prestamo"), ese gasto sigue viviendo en su propio proyecto (para que
+  // las partidas/categorías cuadren ahí), pero el efectivo en realidad
+  // salió de otro. Para que el Saldo de CADA proyecto refleje su
+  // disponibilidad real: al proyecto que RECIBIÓ el préstamo se le suma de
+  // vuelta el saldo pendiente de esos gastos (esa parte todavía no la pagó
+  // con su propio dinero); al proyecto que PRESTÓ se le resta (ya no tiene
+  // ese efectivo disponible mientras no se lo regresen). En "🌐 Todos los
+  // proyectos" el ajuste siempre da 0 (se cancela entre sí, es solo dinero
+  // moviéndose de un proyecto a otro), por eso solo se nota al filtrar un
+  // proyecto específico.
+  function ajustePrestamosProyecto(proyectoId) {
+    if (!proyectoId) return 0;
+    let ajuste = 0;
+    for (const g of state.gastos) {
+      if (g.fuente_fondos !== "prestamo") continue;
+      const saldoPendiente = Number(g.monto) - (g.abonos_prestamo || []).reduce((s, a) => s + Number(a.monto), 0);
+      if (g.proyecto_id === proyectoId) ajuste += saldoPendiente;
+      if (g.proyecto_prestamista_id === proyectoId) ajuste -= saldoPendiente;
+    }
+    return ajuste;
+  }
+
   function renderResumen() {
     const gastos = gastosFiltrados();
     const entradas = entradasFiltradas();
     const totalGastos = gastos.reduce((s, g) => s + Number(g.monto), 0);
     const totalEntradas = entradas.reduce((s, e) => s + Number(e.monto), 0);
-    const saldo = totalEntradas - totalGastos;
+    const ajustePrestamos = ajustePrestamosProyecto(state.filtroProyecto);
+    const saldo = totalEntradas - totalGastos + ajustePrestamos;
     $("total-general").textContent = fmt(totalGastos);
     $("total-entradas").textContent = fmt(totalEntradas);
     const saldoEl = $("total-saldo");
     saldoEl.textContent = fmt(saldo);
     saldoEl.style.color = saldo >= 0 ? "#0ca30c" : "#d03b3b";
+    const notaSaldo = $("total-saldo-nota");
+    if (Math.abs(ajustePrestamos) > 0.005) {
+      notaSaldo.textContent = `Incluye ${ajustePrestamos > 0 ? "+" : "-"}${fmt(Math.abs(ajustePrestamos))} por préstamos entre proyectos`;
+      notaSaldo.classList.remove("hidden");
+    } else {
+      notaSaldo.classList.add("hidden");
+    }
 
     const porCategoria = {};
     for (const g of gastos) {
@@ -1035,7 +1068,7 @@
           ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
           : "";
         let creditoTag = "";
-        if (g.metodo_pago === "Crédito") {
+        if (g.metodo_pago === "Crédito" || g.fuente_fondos === "credito") {
           const abonado = (g.abonos_credito || []).reduce((s, a) => s + Number(a.monto), 0);
           const saldo = Number(g.monto) - abonado;
           creditoTag =
@@ -1043,12 +1076,22 @@
               ? `<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 ${fmt(saldo)}</span>`
               : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 pagado</span>';
         }
+        let prestamoTag = "";
+        if (g.fuente_fondos === "prestamo") {
+          const abonado = (g.abonos_prestamo || []).reduce((s, a) => s + Number(a.monto), 0);
+          const saldo = Number(g.monto) - abonado;
+          const nombrePrestamista = g.proyecto_prestamista?.nombre || "otro proyecto";
+          prestamoTag =
+            saldo > 0.005
+              ? `<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle" title="Dinero prestado de ${esc(nombrePrestamista)}">🔁 ${fmt(saldo)}</span>`
+              : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">🔁 regresado</span>';
+        }
         const ivaTag = gastoImpuestosBadge(g);
         return `
         <button data-id="${g.id}" data-pendiente="${g._pendiente ? 1 : 0}" class="gasto-item w-full text-left bg-white rounded-xl border border-slate-200 shadow-sm p-3 hover:border-slate-300 transition">
           <div class="flex justify-between items-start">
             <div class="min-w-0 pr-2">
-              <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${creditoTag}${ivaTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
+              <p class="font-medium text-slate-900 truncate">${proyectoTag}${pendienteTag}${creditoTag}${prestamoTag}${ivaTag}${esc(g.descripcion || g.categorias?.nombre || "Gasto")}</p>
               <p class="text-xs text-slate-500 truncate">${esc(g.categorias?.nombre || "")}${proveedor ? " · " + esc(proveedor) : ""}</p>
               <p class="text-xs text-slate-400">${fmtFecha(g.fecha)} · ${esc(g.metodo_pago || "")}${g.pagado_por ? " · pagó " + esc(g.pagado_por) : ""}</p>
             </div>
@@ -1077,12 +1120,20 @@
 
   $("filtro-categoria").addEventListener("change", renderLista);
 
-  // -------------------- CRÉDITOS (gastos con metodo_pago = "Crédito") --------------------
-  // No hay una columna "es_credito" aparte: un gasto es una deuda a crédito
-  // si su metodo_pago vale exactamente "Crédito". El saldo pendiente se
-  // calcula en el cliente restándole al monto original la suma de sus
-  // abonos (g.abonos_credito, que ya viene incluido en cada gasto gracias
-  // al select anidado de DATA.getGastos).
+  // -------------------- CRÉDITOS (metodo_pago = "Crédito" O fuente_fondos = "credito") --------------------
+  // Un gasto es una deuda a crédito si su metodo_pago vale exactamente
+  // "Crédito" (deuda con el proveedor de ese gasto, la forma original) O SI
+  // su fuente_fondos vale "credito" (línea de crédito general de la obra,
+  // sin depender de qué proveedor tenga el gasto — ver la actualización de
+  // "fuente de fondos"). Ambos casos comparten el mismo mecanismo de
+  // abonos parciales (abonos_credito). El saldo pendiente se calcula en el
+  // cliente restándole al monto original la suma de sus abonos (g.abonos_
+  // credito, que ya viene incluido en cada gasto gracias al select
+  // anidado de DATA.getGastos).
+  function creditoAcreedorLabel(g) {
+    return g.proveedores?.nombre_empresa || g.proveedor_texto || g.credito_acreedor || "Línea de crédito de la obra";
+  }
+
   function creditoInfo(g) {
     const abonado = (g.abonos_credito || []).reduce((s, a) => s + Number(a.monto), 0);
     const saldo = Number(g.monto) - abonado;
@@ -1106,7 +1157,7 @@
     const provFiltro = $("creditos-filtro-proveedor").value;
 
     const todosCredito = gastosFiltrados()
-      .filter((g) => g.metodo_pago === "Crédito")
+      .filter((g) => g.metodo_pago === "Crédito" || g.fuente_fondos === "credito")
       .map((g) => ({ ...g, _credito: creditoInfo(g) }));
     const todosPendientes = todosCredito.filter((g) => g._credito.saldo > 0.005);
 
@@ -1125,10 +1176,10 @@
     $("creditos-bucket-2").textContent = fmt(buckets.b2);
     $("creditos-bucket-3").textContent = fmt(buckets.b3);
 
-    // Adeudado por proveedor
+    // Adeudado por proveedor / acreedor
     const porProveedor = new Map();
     todosPendientes.forEach((g) => {
-      const nombre = g.proveedores?.nombre_empresa || g.proveedor_texto || "Sin proveedor";
+      const nombre = creditoAcreedorLabel(g);
       porProveedor.set(nombre, (porProveedor.get(nombre) || 0) + g._credito.saldo);
     });
     const provOrdenados = [...porProveedor.entries()].sort((a, b) => b[1] - a[1]);
@@ -1144,21 +1195,21 @@
           .join("")
       : '<p class="text-xs text-slate-400">Sin deudas pendientes.</p>';
 
-    // Opciones del filtro de proveedor (a partir de los proveedores que sí
+    // Opciones del filtro de proveedor/acreedor (a partir de los que sí
     // tienen algún gasto a crédito, no el catálogo completo)
-    const provsEnCreditos = [
-      ...new Set(todosCredito.map((g) => g.proveedores?.nombre_empresa || g.proveedor_texto).filter(Boolean)),
-    ].sort((a, b) => a.localeCompare(b, "es"));
+    const provsEnCreditos = [...new Set(todosCredito.map((g) => creditoAcreedorLabel(g)))].sort((a, b) =>
+      a.localeCompare(b, "es")
+    );
     const provFiltroActual = $("creditos-filtro-proveedor").value;
     $("creditos-filtro-proveedor").innerHTML =
       '<option value="">Todos los proveedores</option>' +
       provsEnCreditos.map((p) => `<option value="${esc(p)}">${esc(p)}</option>`).join("");
     $("creditos-filtro-proveedor").value = provFiltroActual;
 
-    // Lista (aplica los dos filtros: proveedor y solo-pendientes)
+    // Lista (aplica los dos filtros: proveedor/acreedor y solo-pendientes)
     let gastos = todosCredito;
     if (soloPendientes) gastos = gastos.filter((g) => g._credito.saldo > 0.005);
-    if (provFiltro) gastos = gastos.filter((g) => (g.proveedores?.nombre_empresa || g.proveedor_texto || "") === provFiltro);
+    if (provFiltro) gastos = gastos.filter((g) => creditoAcreedorLabel(g) === provFiltro);
     gastos.sort((a, b) => {
       if (a._credito.vencido !== b._credito.vencido) return a._credito.vencido ? -1 : 1;
       return b._credito.diasAntiguedad - a._credito.diasAntiguedad;
@@ -1169,7 +1220,7 @@
     cont.innerHTML = gastos
       .map((g) => {
         const c = g._credito;
-        const proveedor = g.proveedores?.nombre_empresa || g.proveedor_texto || "Sin proveedor";
+        const proveedor = creditoAcreedorLabel(g);
         const proyectoTag =
           mostrarTodos && g.proyectos?.nombre
             ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(g.proyectos.nombre)}</span>`
@@ -1300,6 +1351,160 @@
 
   $("creditos-filtro-proveedor").addEventListener("change", renderCreditosList);
   $("creditos-solo-pendientes").addEventListener("change", renderCreditosList);
+
+  // -------------------- PRÉSTAMOS ENTRE PROYECTOS (fuente_fondos = "prestamo") --------------------
+  // Un gasto pagado con dinero de otro proyecto se sigue viendo en su
+  // propio proyecto (para que las partidas/categorías cuadren ahí), pero
+  // queda una deuda entre proyectos rastreada con el mismo patrón de
+  // abonos parciales que ya usan los créditos (aquí: abonos_prestamo). A
+  // diferencia de gastosFiltrados()/creditosFiltrados(), aquí SÍ hace
+  // falta mirar gastos de fuera del proyecto filtrado: si filtras el
+  // proyecto que PRESTÓ el dinero, también debe aparecer lo que le deben
+  // (el gasto vive en el otro proyecto, el deudor).
+  function prestamoInfo(g) {
+    const abonado = (g.abonos_prestamo || []).reduce((s, a) => s + Number(a.monto), 0);
+    return { abonado, saldo: Number(g.monto) - abonado };
+  }
+
+  function prestamosFiltrados() {
+    const pid = state.filtroProyecto;
+    return state.gastos.filter((g) => {
+      if (g.fuente_fondos !== "prestamo") return false;
+      if (!pid) return true;
+      return g.proyecto_id === pid || g.proyecto_prestamista_id === pid;
+    });
+  }
+
+  function renderPrestamosList() {
+    const prestamos = prestamosFiltrados().map((g) => ({ ...g, _prestamo: prestamoInfo(g) }));
+    const pendientes = prestamos.filter((g) => g._prestamo.saldo > 0.005);
+    $("prestamos-total-pendiente").textContent = fmt(pendientes.reduce((s, g) => s + g._prestamo.saldo, 0));
+
+    const ordenados = prestamos.slice().sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
+    const cont = $("lista-prestamos");
+    $("lista-prestamos-vacia").classList.toggle("hidden", ordenados.length > 0);
+    cont.innerHTML = ordenados
+      .map((g) => {
+        const p = g._prestamo;
+        const deudor = g.proyectos?.nombre || "Proyecto";
+        const prestamista = g.proyecto_prestamista?.nombre || "Otro proyecto";
+        const pagadoBadge =
+          p.saldo <= 0.005
+            ? '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 ml-1">regresado</span>'
+            : "";
+        const abonosOrdenados = (g.abonos_prestamo || []).slice().sort((a, b) => (a.fecha < b.fecha ? -1 : 1));
+        return `
+        <div class="prestamo-item bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+          <button class="prestamo-toggle w-full text-left flex justify-between items-start">
+            <div class="min-w-0 pr-2">
+              <p class="font-medium text-slate-900 truncate">${esc(deudor)} le debe a ${esc(prestamista)}</p>
+              <p class="text-xs text-slate-500 truncate">${esc(g.descripcion || g.categorias?.nombre || "")}</p>
+              <p class="text-xs text-slate-400">${fmtFecha(g.fecha)}${pagadoBadge}</p>
+            </div>
+            <div class="text-right shrink-0">
+              <p class="text-xs text-slate-400">${fmt(g.monto)} original</p>
+              <p class="font-semibold ${p.saldo > 0.005 ? "text-red-600" : "text-green-600"}">${fmt(p.saldo)}</p>
+            </div>
+          </button>
+          <div class="prestamo-detalle hidden mt-3 pt-3 border-t border-slate-100">
+            <div class="space-y-1 mb-3">
+              ${
+                abonosOrdenados.length
+                  ? abonosOrdenados
+                      .map(
+                        (a) => `
+                <div class="flex justify-between items-center text-xs text-slate-600">
+                  <span>${fmtFecha(a.fecha)}${a.notas ? " · " + esc(a.notas) : ""}</span>
+                  <span class="flex items-center gap-2">
+                    <span class="font-medium text-slate-800">${fmt(a.monto)}</span>
+                    <button class="abono-prestamo-delete-btn text-slate-400 hover:text-red-600" data-id="${a.id}">🗑️</button>
+                  </span>
+                </div>`
+                      )
+                      .join("")
+                  : '<p class="text-xs text-slate-400">Sin abonos todavía.</p>'
+              }
+            </div>
+            ${
+              g._pendiente
+                ? '<p class="text-xs text-amber-600">Este gasto todavía no se sube (sin internet) — los abonos se podrán registrar en cuanto se sincronice.</p>'
+                : p.saldo > 0.005
+                ? `
+            <form class="abono-prestamo-form flex flex-wrap items-end gap-2" data-gasto-id="${g.id}">
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Fecha</label>
+                <input type="date" class="abono-prestamo-fecha rounded-lg border border-slate-300 px-2 py-1.5 text-sm" value="${new Date()
+                  .toISOString()
+                  .slice(0, 10)}" />
+              </div>
+              <div>
+                <label class="block text-[11px] text-slate-500 mb-1">Monto</label>
+                <input type="number" step="0.01" min="0.01" max="${p.saldo.toFixed(
+                  2
+                )}" class="abono-prestamo-monto rounded-lg border border-slate-300 px-2 py-1.5 text-sm w-28" placeholder="0.00" />
+              </div>
+              <div class="flex-1 min-w-[120px]">
+                <label class="block text-[11px] text-slate-500 mb-1">Notas (opcional)</label>
+                <input type="text" class="abono-prestamo-notas rounded-lg border border-slate-300 px-2 py-1.5 text-sm w-full" />
+              </div>
+              <button type="submit" class="bg-brand text-white rounded-lg px-3 py-2 text-sm font-medium hover:bg-brand-dark">Registrar abono</button>
+            </form>`
+                : ""
+            }
+          </div>
+        </div>`;
+      })
+      .join("");
+
+    cont.querySelectorAll(".prestamo-toggle").forEach((el) => {
+      el.addEventListener("click", () => {
+        el.parentElement.querySelector(".prestamo-detalle").classList.toggle("hidden");
+      });
+    });
+
+    cont.querySelectorAll(".abono-prestamo-delete-btn").forEach((el) => {
+      el.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
+        if (!confirm("¿Eliminar este abono? El saldo pendiente del préstamo vuelve a subir.")) return;
+        try {
+          await DATA.deleteAbonoPrestamo(el.dataset.id);
+          toast("Abono eliminado");
+          await refreshGastos();
+        } catch (err) {
+          toast("Error al eliminar abono: " + err.message, true);
+        }
+      });
+    });
+
+    cont.querySelectorAll(".abono-prestamo-form").forEach((form) => {
+      form.addEventListener("click", (ev) => ev.stopPropagation());
+      form.addEventListener("submit", async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const gastoId = form.dataset.gastoId;
+        const fecha = form.querySelector(".abono-prestamo-fecha").value;
+        const monto = parseFloat(form.querySelector(".abono-prestamo-monto").value);
+        const notas = form.querySelector(".abono-prestamo-notas").value.trim() || null;
+        if (!monto || monto <= 0) {
+          toast("Pon un monto válido", true);
+          return;
+        }
+        try {
+          await DATA.addAbonoPrestamo({
+            gasto_id: gastoId,
+            fecha,
+            monto,
+            notas,
+            registrado_por: state.currentUser,
+          });
+          toast("Abono registrado");
+          await refreshGastos();
+        } catch (err) {
+          toast("Error al registrar abono: " + err.message, true);
+        }
+      });
+    });
+  }
 
   // -------------------- PRESUPUESTO POR PARTIDA --------------------
   // Cuánto se le asigna a cada partida (categoría) de un proyecto, para
@@ -2317,9 +2522,19 @@
         "Pagó": g.pagado_por || "",
         "Capturó": g.capturado_por || "",
         Notas: g.notas || "",
+        "Fuente de fondos":
+          g.fuente_fondos === "credito"
+            ? "Crédito / línea de crédito"
+            : g.fuente_fondos === "prestamo"
+            ? `Préstamo de ${g.proyecto_prestamista?.nombre || "otro proyecto"}`
+            : "Fondos propios",
         "Saldo pendiente (crédito)":
-          g.metodo_pago === "Crédito"
+          g.metodo_pago === "Crédito" || g.fuente_fondos === "credito"
             ? Number(g.monto) - (g.abonos_credito || []).reduce((s, a) => s + Number(a.monto), 0)
+            : "",
+        "Saldo pendiente (préstamo)":
+          g.fuente_fondos === "prestamo"
+            ? Number(g.monto) - (g.abonos_prestamo || []).reduce((s, a) => s + Number(a.monto), 0)
             : "",
         "Fecha límite de pago": g.fecha_limite_pago || "",
       }));
@@ -2541,12 +2756,45 @@
       provs.map((p) => `<option value="${p.id}">${esc(p.nombre_empresa)}</option>`).join("");
   }
 
-  // Muestra/oculta el campo de "fecha límite de pago", solo relevante
-  // cuando el método de pago elegido es "Crédito".
+  // Muestra/oculta el campo de "fecha límite de pago" — aplica tanto si el
+  // método de pago es "Crédito" (deuda con el proveedor) como si la fuente
+  // de fondos es "credito" (línea de crédito general de la obra): ambos
+  // casos generan una deuda que se rastrea en la pestaña "Créditos".
   function toggleCreditoFields() {
-    $("gasto-credito-fields").classList.toggle("hidden", $("gasto-metodo").value !== "Crédito");
+    const esCredito = $("gasto-metodo").value === "Crédito" || $("gasto-fuente-fondos").value === "credito";
+    $("gasto-credito-fields").classList.toggle("hidden", !esCredito);
   }
   $("gasto-metodo").addEventListener("change", toggleCreditoFields);
+
+  // -------------------- FUENTE DE FONDOS (crédito general / préstamo de otro proyecto) --------------------
+  // Campo aparte del método de pago: de dónde sale el dinero en realidad.
+  // 'propio' no necesita nada extra; 'credito' muestra el campo de a quién
+  // se le debe (además de la fecha límite, vía toggleCreditoFields);
+  // 'prestamo' muestra el select de qué proyecto prestó el dinero.
+  function renderProyectoPrestamistaOptions() {
+    const sel = $("gasto-proyecto-prestamista");
+    const actual = $("gasto-proyecto").value;
+    const current = sel.value;
+    sel.innerHTML = state.proyectos
+      .filter((p) => p.id !== actual)
+      .map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`)
+      .join("");
+    if ([...sel.options].some((o) => o.value === current)) sel.value = current;
+  }
+
+  function toggleFuenteFondosFields() {
+    const fuente = $("gasto-fuente-fondos").value;
+    $("gasto-fuente-credito-fields").classList.toggle("hidden", fuente !== "credito");
+    $("gasto-fuente-prestamo-fields").classList.toggle("hidden", fuente !== "prestamo");
+    if (fuente === "prestamo") renderProyectoPrestamistaOptions();
+    toggleCreditoFields();
+  }
+  $("gasto-fuente-fondos").addEventListener("change", toggleFuenteFondosFields);
+  // Si cambia el proyecto del gasto, el select de "quién prestó" no debe
+  // seguir ofreciendo ese mismo proyecto como opción.
+  $("gasto-proyecto").addEventListener("change", () => {
+    if ($("gasto-fuente-fondos").value === "prestamo") renderProyectoPrestamistaOptions();
+  });
 
   // Desglose de IVA (16%) para ENTRADAS: se queda igual que antes, es un
   // desglose simple de un solo impuesto fijo. El de GASTOS ahora es el
@@ -2804,7 +3052,11 @@
       $("gasto-pagador").value = g.pagado_por || state.currentUser;
       $("gasto-notas").value = g.notas || "";
       $("gasto-fecha-limite").value = g.fecha_limite_pago || "";
-      toggleCreditoFields();
+      $("gasto-fuente-fondos").value = g.fuente_fondos || "propio";
+      $("gasto-credito-acreedor").value = g.credito_acreedor || "";
+      renderProyectoPrestamistaOptions();
+      $("gasto-proyecto-prestamista").value = g.proyecto_prestamista_id || "";
+      toggleFuenteFondosFields();
       state.formImpuestos = (g.gasto_impuestos || []).map((imp) => ({ ...imp }));
       resetMiniFormImpuesto();
       renderGastoImpuestosLista();
@@ -2825,7 +3077,11 @@
       $("gasto-pagador").value = state.currentUser;
       $("gasto-notas").value = "";
       $("gasto-fecha-limite").value = "";
-      toggleCreditoFields();
+      $("gasto-fuente-fondos").value = "propio";
+      $("gasto-credito-acreedor").value = "";
+      renderProyectoPrestamistaOptions();
+      $("gasto-proyecto-prestamista").value = "";
+      toggleFuenteFondosFields();
       state.formImpuestos = [];
       resetMiniFormImpuesto();
       renderGastoImpuestosLista();
@@ -2853,10 +3109,22 @@
         pagado_por: $("gasto-pagador").value || null,
         capturado_por: state.currentUser,
         notas: $("gasto-notas").value.trim() || null,
-        fecha_limite_pago: $("gasto-metodo").value === "Crédito" ? $("gasto-fecha-limite").value || null : null,
+        fecha_limite_pago:
+          $("gasto-metodo").value === "Crédito" || $("gasto-fuente-fondos").value === "credito"
+            ? $("gasto-fecha-limite").value || null
+            : null,
         // con_iva ya no se toca desde el formulario — el desglose de
         // impuestos ahora vive en la tabla gasto_impuestos (ver más abajo).
+        fuente_fondos: $("gasto-fuente-fondos").value,
+        credito_acreedor:
+          $("gasto-fuente-fondos").value === "credito" ? $("gasto-credito-acreedor").value.trim() || null : null,
+        proyecto_prestamista_id:
+          $("gasto-fuente-fondos").value === "prestamo" ? $("gasto-proyecto-prestamista").value || null : null,
       };
+
+      if ($("gasto-fuente-fondos").value === "prestamo" && !payload.proyecto_prestamista_id) {
+        throw new Error("Elige de qué proyecto viene el dinero prestado.");
+      }
 
       // Si el usuario escribió un proveedor que no está en la lista, se
       // agrega automáticamente al directorio de proveedores (si hay

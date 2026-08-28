@@ -91,10 +91,16 @@ window.DATA = (function () {
     // la llave foránea abonos_credito.gasto_id -> gastos.id). Así el saldo
     // pendiente de cada deuda se puede calcular en el cliente sin pedirlo
     // aparte.
+    // proyectos!gastos_proyecto_id_fkey / proyecto_prestamista:proyectos!... :
+    // hay que nombrar explícitamente cada llave foránea hacia "proyectos"
+    // porque ahora hay dos (proyecto_id, el dueño del gasto, y
+    // proyecto_prestamista_id, el proyecto que prestó el dinero cuando
+    // fuente_fondos='prestamo') — Supabase no puede adivinar sola cuál
+    // relación resolver si hay más de una hacia la misma tabla.
     let q = sb
       .from("gastos")
       .select(
-        "*, categorias(nombre), proveedores(nombre_empresa), proyectos(nombre), abonos_credito(*), gasto_documentos(*), gasto_impuestos(*)"
+        "*, categorias(nombre), proveedores(nombre_empresa), proyectos!gastos_proyecto_id_fkey(nombre), proyecto_prestamista:proyectos!gastos_proyecto_prestamista_id_fkey(nombre), abonos_credito(*), abonos_prestamo(*), gasto_documentos(*), gasto_impuestos(*)"
       )
       .order("fecha", { ascending: false })
       .order("created_at", { ascending: false });
@@ -256,6 +262,23 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- ABONOS DE PRÉSTAMOS ENTRE PROYECTOS --------------------
+  // Mismo patrón exacto que abonos_credito: cada fila es un pago parcial con
+  // el que el proyecto deudor le regresa dinero al proyecto que le prestó
+  // (gastos.fuente_fondos='prestamo' + gastos.proyecto_prestamista_id). El
+  // saldo pendiente se calcula siempre en el cliente (monto del gasto menos
+  // la suma de sus abonos), nunca se guarda aparte.
+  async function addAbonoPrestamo(abono) {
+    const { data, error } = await sb.from("abonos_prestamo").insert(abono).select().single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function deleteAbonoPrestamo(id) {
+    const { error } = await sb.from("abonos_prestamo").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   // -------------------- DOCUMENTOS DE UN GASTO (varios por gasto) --------------------
   // Un gasto puede tener varios documentos/comprobantes (fotos y/o PDF), no
   // solo uno — cada fila de gasto_documentos es un archivo ya subido al
@@ -378,6 +401,8 @@ window.DATA = (function () {
     deleteBitacoraEntry,
     addAbonoCredito,
     deleteAbonoCredito,
+    addAbonoPrestamo,
+    deleteAbonoPrestamo,
     addGastoDocumento,
     deleteGastoDocumento,
     addGastoImpuesto,

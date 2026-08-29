@@ -1752,8 +1752,28 @@
       resetPresupuestoForm();
       renderPresupuesto();
     } catch (err) {
-      errEl.textContent = "No se pudo guardar: " + err.message;
-      errEl.classList.remove("hidden");
+      // PGRST116 ("Cannot coerce the result to a single JSON object") es lo
+      // que devuelve Supabase cuando un update/insert con .single() no
+      // encuentra ni una sola fila de vuelta — lo más común es que la
+      // partida que se estaba editando ya no exista (alguien más la borró,
+      // o borró el proyecto completo, desde otro dispositivo mientras el
+      // formulario seguía abierto aquí). En vez de dejar el mensaje técnico
+      // crudo, se refresca la lista desde el servidor para que la partida
+      // fantasma desaparezca y se explica en español qué pudo haber pasado.
+      if (err.code === "PGRST116") {
+        try {
+          state.presupuestos = await DATA.getPresupuestos();
+        } catch (_) {}
+        resetPresupuestoForm();
+        renderPresupuesto();
+        toast(
+          "No se pudo guardar: esa partida ya no existe (puede que se haya borrado desde otro dispositivo). Se actualizó la lista.",
+          true
+        );
+      } else {
+        errEl.textContent = "No se pudo guardar: " + err.message;
+        errEl.classList.remove("hidden");
+      }
     } finally {
       btn.disabled = false;
     }

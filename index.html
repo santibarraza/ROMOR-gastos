@@ -96,6 +96,30 @@
       </button>
       <p id="login-error" class="text-red-600 text-sm hidden"></p>
     </form>
+    <button id="show-admin-login-btn" type="button" class="mt-4 text-xs text-slate-400 underline block mx-auto">
+      ¿Eres Santiago? Entra con tu cuenta
+    </button>
+
+    <form id="form-login-admin" class="space-y-4 hidden">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Correo</label>
+        <input id="login-admin-email" type="email" required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Contraseña</label>
+        <input id="login-admin-password" type="password" required
+          class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+      </div>
+      <button type="submit" id="login-admin-btn"
+        class="w-full bg-brand text-white rounded-lg py-2.5 font-medium hover:bg-brand-dark transition">
+        Entrar como Santiago
+      </button>
+      <p id="login-admin-error" class="text-red-600 text-sm hidden"></p>
+      <button id="show-team-login-btn" type="button" class="text-xs text-slate-400 underline block mx-auto">
+        ← Usar la contraseña del equipo
+      </button>
+    </form>
   </div>
  </div>
 </div>
@@ -156,13 +180,36 @@
   </main>
 </div>
 
+<!-- ===================== PERMISOS (solo Santiago) ===================== -->
+<div id="view-permisos" class="view">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+      <button id="permisos-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <h1 class="text-lg font-bold text-slate-900">Permisos</h1>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-4 pb-24">
+    <p class="text-sm text-slate-500 mb-4">
+      Elige qué secciones puede ver cada persona del equipo. Los cambios se guardan al instante.
+      Nadie ve ninguna sección hasta que se la actives aquí — esto solo controla qué ve cada
+      quien, no le quita ni le da permiso para editar lo que ya puede ver.
+    </p>
+    <div id="lista-permisos" class="space-y-3"></div>
+    <p id="permisos-vacio" class="text-center text-slate-400 text-sm py-3 hidden">
+      Todavía no hay ningún integrante aparte de ti. En cuanto alguien elija su nombre al entrar
+      con la contraseña del equipo, aparecerá aquí.
+    </p>
+  </main>
+</div>
+
 <!-- ===================== DASHBOARD ===================== -->
 <div id="view-dashboard" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl lg:max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
       <div>
         <img src="assets/logo.png" alt="ROMOR" class="logo-img" style="height:1.5rem" />
-        <p class="text-xs text-slate-500 mt-1">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button> · <button id="change-project-btn" class="underline">proyectos</button> · <button id="open-proveedores-btn" class="underline">proveedores</button> · <button id="open-recordatorios-btn" class="underline">recordatorios</button></p>
+        <p class="text-xs text-slate-500 mt-1">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button><span id="link-proyectos"> · <button id="change-project-btn" class="underline">proyectos</button></span><span id="link-proveedores"> · <button id="open-proveedores-btn" class="underline">proveedores</button></span><span id="link-recordatorios"> · <button id="open-recordatorios-btn" class="underline">recordatorios</button></span><span id="link-permisos" class="hidden"> · <button id="open-permisos-btn" class="underline">permisos</button></span></p>
       </div>
       <button id="logout-btn" class="text-sm text-slate-500 hover:text-slate-800">Salir</button>
     </div>
@@ -177,7 +224,7 @@
     <div class="lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-6 lg:items-start">
       <!-- Tarjeta de recordatorios: visible sin importar la pestaña o el
            filtro de proyecto activo. -->
-      <div class="lg:order-2 lg:sticky lg:top-20 mb-3 lg:mb-0">
+      <div id="recordatorios-card-wrap" class="lg:order-2 lg:sticky lg:top-20 mb-3 lg:mb-0">
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
           <div class="flex items-center justify-between mb-1.5">
             <h2 class="text-sm font-semibold text-slate-700">📌 Recordatorios</h2>
@@ -227,7 +274,7 @@
     </div>
 
     <!-- Tabs -->
-    <div class="flex gap-2 mb-4 overflow-x-auto -mx-4 px-4" style="scrollbar-width:none">
+    <div id="tabs-bar" class="flex gap-2 mb-4 overflow-x-auto -mx-4 px-4" style="scrollbar-width:none">
       <button id="tab-bitacora-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Bitácora</button>
       <button id="tab-gastos-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-brand text-white">Gastos</button>
       <button id="tab-entradas-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Entradas</button>
@@ -236,6 +283,13 @@
       <button id="tab-presupuesto-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Presupuesto</button>
       <button id="tab-plan-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Plan de acción</button>
     </div>
+
+    <!-- Se muestra en vez de las pestañas cuando Santiago todavía no le ha
+         dado acceso a esta persona a ninguna sección (ver pantalla
+         "Permisos"). -->
+    <p id="dashboard-sin-acceso" class="hidden text-center text-slate-400 text-sm py-10">
+      Todavía no tienes acceso a ninguna sección. Pídele a Santiago que te dé acceso desde "Permisos".
+    </p>
 
     <!-- ===== Panel de gastos ===== -->
     <div id="panel-gastos">

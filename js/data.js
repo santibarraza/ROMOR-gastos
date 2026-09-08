@@ -407,6 +407,32 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- PERMISOS (qué pantallas puede ver cada integrante) --------------------
+  async function getPermisos() {
+    const { data, error } = await sb.from("permisos_pantalla").select("*");
+    if (error) throw error;
+    return data;
+  }
+
+  async function addPermiso(integranteId, pantalla) {
+    const { data, error } = await sb
+      .from("permisos_pantalla")
+      .insert({ integrante_id: integranteId, pantalla })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  async function removePermiso(integranteId, pantalla) {
+    const { error } = await sb
+      .from("permisos_pantalla")
+      .delete()
+      .eq("integrante_id", integranteId)
+      .eq("pantalla", pantalla);
+    if (error) throw error;
+  }
+
   return {
     getCategorias,
     getProveedores,
@@ -450,5 +476,8 @@ window.DATA = (function () {
     getPlanAccion,
     savePlanAccionItem,
     deletePlanAccionItem,
+    getPermisos,
+    addPermiso,
+    removePermiso,
   };
 })();

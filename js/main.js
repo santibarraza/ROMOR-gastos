@@ -51,6 +51,14 @@
     // no saturar la lista) — se puede activar con el checkbox "Mostrar los
     // que ya están hechos".
     planMostrarHechos: false,
+    // true solo si se entró con la cuenta EXCLUSIVA de Santiago
+    // (ADMIN_LOGIN_EMAIL en config.js), nunca con la contraseña compartida
+    // del equipo — ver sección "PERMISOS" más abajo. Un admin ve TODAS las
+    // secciones sin excepción y es el único que puede administrar permisos.
+    isAdmin: false,
+    // Qué pantallas puede ver cada integrante (ver tabla permisos_pantalla).
+    // Cada elemento trae {id, integrante_id, pantalla}.
+    permisos: [],
   };
 
   const $ = (id) => document.getElementById(id);
@@ -164,9 +172,23 @@
   async function init() {
     const { data } = await sb.auth.getSession();
     if (data.session) {
+      state.isAdmin = data.session.user.email === window.APP_CONFIG.ADMIN_LOGIN_EMAIL;
       await afterLogin();
     } else {
       showView("login");
+    }
+  }
+
+  function checkConfig() {
+    if (
+      !window.APP_CONFIG.SUPABASE_URL ||
+      window.APP_CONFIG.SUPABASE_URL.includes("TU-PROYECTO") ||
+      !window.APP_CONFIG.SUPABASE_ANON_KEY ||
+      window.APP_CONFIG.SUPABASE_ANON_KEY.includes("TU-ANON-KEY")
+    ) {
+      throw new Error(
+        "Falta configurar js/config.js con la URL y la llave anon de tu proyecto Supabase (todavía tiene los valores de ejemplo)."
+      );
     }
   }
 
@@ -176,21 +198,13 @@
     $("login-btn").disabled = true;
     $("login-btn").textContent = "Entrando...";
     try {
-      if (
-        !window.APP_CONFIG.SUPABASE_URL ||
-        window.APP_CONFIG.SUPABASE_URL.includes("TU-PROYECTO") ||
-        !window.APP_CONFIG.SUPABASE_ANON_KEY ||
-        window.APP_CONFIG.SUPABASE_ANON_KEY.includes("TU-ANON-KEY")
-      ) {
-        throw new Error(
-          "Falta configurar js/config.js con la URL y la llave anon de tu proyecto Supabase (todavía tiene los valores de ejemplo)."
-        );
-      }
+      checkConfig();
       const { error } = await sb.auth.signInWithPassword({
         email: window.APP_CONFIG.SHARED_LOGIN_EMAIL,
         password: $("login-password").value,
       });
       if (error) throw error;
+      state.isAdmin = false;
       await afterLogin();
     } catch (err) {
       // Mostramos el motivo real (Supabase ya lo devuelve en español-friendly
@@ -215,11 +229,68 @@
     }
   });
 
+  // Login exclusivo de Santiago (cuenta aparte de Supabase Auth, con su
+  // propia contraseña) — reemplaza por completo al selector de nombre para
+  // él: en cuanto entra así, la app ya sabe que es Santiago sin tener que
+  // elegirlo de una lista (que cualquiera con la contraseña del equipo
+  // también podría elegir). Ver sección "PERMISOS" más abajo.
+  $("show-admin-login-btn").addEventListener("click", () => {
+    $("form-login").classList.add("hidden");
+    $("show-admin-login-btn").classList.add("hidden");
+    $("form-login-admin").classList.remove("hidden");
+  });
+
+  $("show-team-login-btn").addEventListener("click", () => {
+    $("form-login-admin").classList.add("hidden");
+    $("form-login").classList.remove("hidden");
+    $("show-admin-login-btn").classList.remove("hidden");
+  });
+
+  $("form-login-admin").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    $("login-admin-error").classList.add("hidden");
+    $("login-admin-btn").disabled = true;
+    $("login-admin-btn").textContent = "Entrando...";
+    try {
+      checkConfig();
+      const { data, error } = await sb.auth.signInWithPassword({
+        email: $("login-admin-email").value.trim(),
+        password: $("login-admin-password").value,
+      });
+      if (error) throw error;
+      if (data.user.email !== window.APP_CONFIG.ADMIN_LOGIN_EMAIL) {
+        await sb.auth.signOut();
+        throw new Error("Ese correo no es la cuenta de administrador (revisa ADMIN_LOGIN_EMAIL en config.js).");
+      }
+      state.isAdmin = true;
+      state.currentUser = "Santiago";
+      localStorage.setItem("romor_user", "Santiago");
+      await afterLogin();
+    } catch (err) {
+      let msg = err.message || "No se pudo iniciar sesión.";
+      if (/invalid login credentials/i.test(msg)) {
+        msg = "Correo o contraseña incorrectos.";
+      }
+      $("login-admin-error").textContent = msg;
+      $("login-admin-error").classList.remove("hidden");
+      console.error("Error de login admin:", err);
+    } finally {
+      $("login-admin-btn").disabled = false;
+      $("login-admin-btn").textContent = "Entrar como Santiago";
+    }
+  });
+
   async function doLogout() {
     await sb.auth.signOut();
     localStorage.removeItem("romor_user");
     state.currentUser = null;
+    state.isAdmin = false;
     $("login-password").value = "";
+    $("login-admin-email").value = "";
+    $("login-admin-password").value = "";
+    $("form-login-admin").classList.add("hidden");
+    $("form-login").classList.remove("hidden");
+    $("show-admin-login-btn").classList.remove("hidden");
     showView("login");
   }
   $("logout-btn").addEventListener("click", doLogout);
@@ -232,6 +303,19 @@
     await loadCatalogs();
     updateOfflineBanner();
     trySyncOutbox();
+    if (state.isAdmin) {
+      state.currentUser = "Santiago";
+      if (!state.integrantes.find((i) => i.nombre === "Santiago")) {
+        try {
+          await DATA.addIntegrante("Santiago");
+          await loadCatalogs();
+        } catch (err) {
+          console.warn("No se pudo crear el integrante Santiago automáticamente:", err);
+        }
+      }
+      await goToDashboard();
+      return;
+    }
     if (!state.currentUser || !state.integrantes.find((i) => i.nombre === state.currentUser)) {
       showNameView();
     } else {
@@ -242,9 +326,16 @@
   // -------------------- SELECCIÓN DE NOMBRE --------------------
   function showNameView() {
     const sel = $("name-select");
+    // "Santiago" se excluye de la lista a propósito: su nombre está
+    // reservado para su cuenta de administrador (ver "¿Eres Santiago?" en
+    // el login) — así nadie más puede elegirlo con la contraseña compartida
+    // y hacerse pasar por él para administrar permisos.
     sel.innerHTML =
       '<option value="">— Selecciona tu nombre —</option>' +
-      state.integrantes.map((i) => `<option value="${esc(i.nombre)}">${esc(i.nombre)}</option>`).join("");
+      state.integrantes
+        .filter((i) => i.nombre !== "Santiago")
+        .map((i) => `<option value="${esc(i.nombre)}">${esc(i.nombre)}</option>`)
+        .join("");
     $("name-new").value = "";
     showView("name");
   }
@@ -267,6 +358,10 @@
     const nombre = $("name-select").value || $("name-new").value.trim();
     if (!nombre) {
       toast("Selecciona o escribe tu nombre", true);
+      return;
+    }
+    if (nombre === "Santiago") {
+      toast('Ese nombre está reservado — entra con la cuenta de Santiago ("¿Eres Santiago?" en el login).', true);
       return;
     }
     if (!state.integrantes.find((i) => i.nombre === nombre)) {
@@ -816,15 +911,17 @@
       // Traemos TODOS los gastos/entradas/documentos/bitácora (de todos los
       // proyectos) y filtramos en el cliente — así la vista general y el
       // filtro por proyecto no requieren volver a pedir datos al servidor.
-      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos, planAccion] = await Promise.all([
-        DATA.getGastos(),
-        DATA.getEntradas(),
-        DATA.getDocumentos(),
-        DATA.getBitacora(),
-        DATA.getRecordatorios(),
-        DATA.getPresupuestos(),
-        DATA.getPlanAccion(),
-      ]);
+      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos, planAccion, permisos] =
+        await Promise.all([
+          DATA.getGastos(),
+          DATA.getEntradas(),
+          DATA.getDocumentos(),
+          DATA.getBitacora(),
+          DATA.getRecordatorios(),
+          DATA.getPresupuestos(),
+          DATA.getPlanAccion(),
+          DATA.getPermisos(),
+        ]);
       state.gastos = gastos;
       state.entradas = entradas;
       state.documentos = documentos;
@@ -832,6 +929,7 @@
       state.recordatorios = recordatorios;
       state.presupuestos = presupuestos;
       state.planAccion = planAccion;
+      state.permisos = permisos;
     } catch (err) {
       toast("Error cargando datos: " + err.message, true);
       return;
@@ -847,6 +945,7 @@
     renderRecordatoriosCard();
     renderPresupuesto();
     renderPlanAccion();
+    aplicarPermisosUI();
   }
 
   // Compatibilidad: algunas partes del código piden solo refrescar gastos/entradas
@@ -952,9 +1051,151 @@
         "tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium " +
         (active ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
     });
+    // Lo de arriba acaba de reescribir el className de TODOS los botones de
+    // pestaña (le quita cualquier "hidden" que tuvieran) — hay que volver a
+    // aplicar de inmediato qué pestañas puede ver la persona actual, si no
+    // las que Permisos le tenía ocultas reaparecerían con solo tocar
+    // cualquier otra pestaña permitida.
+    const permitidas = pantallasPermitidas();
+    TABS.forEach((t) => {
+      $(`tab-${t}-btn`).classList.toggle("hidden", !permitidas.includes(t));
+    });
     // El botón "+" flotante solo aplica a la lista de gastos; documentos y
     // bitácora tienen su propio botón "+" arriba de su lista.
     $("fab-add").classList.toggle("hidden", tab !== "gastos");
+  }
+
+  // -------------------- PERMISOS (qué pantallas puede ver cada integrante) --------------------
+  // Las 10 secciones que Santiago puede prender/apagar por persona: las 7
+  // pestañas del dashboard más las 3 pantallas completas a las que se
+  // entra desde los enlaces de arriba ("proyectos"/"recordatorios"/
+  // "proveedores"). Esto NO restringe qué puede editar alguien que sí ve
+  // una sección — solo decide qué se le muestra.
+  const PANTALLAS_CATALOGO = [
+    { key: "bitacora", label: "Bitácora" },
+    { key: "gastos", label: "Gastos" },
+    { key: "entradas", label: "Entradas" },
+    { key: "documentos", label: "Documentos" },
+    { key: "creditos", label: "Créditos" },
+    { key: "presupuesto", label: "Presupuesto" },
+    { key: "plan", label: "Plan de acción" },
+    { key: "proyectos", label: "Proyectos" },
+    { key: "recordatorios", label: "Recordatorios" },
+    { key: "proveedores", label: "Proveedores" },
+  ];
+
+  // Santiago (state.isAdmin) siempre ve las 10 — nunca depende de filas en
+  // permisos_pantalla. Cualquier otro integrante ve solo lo que tenga
+  // agregado ahí; si no tiene ninguna fila (o todavía no existe como
+  // integrante), no ve nada.
+  function pantallasPermitidas() {
+    if (state.isAdmin) return PANTALLAS_CATALOGO.map((p) => p.key);
+    const integrante = state.integrantes.find((i) => i.nombre === state.currentUser);
+    if (!integrante) return [];
+    return state.permisos.filter((p) => p.integrante_id === integrante.id).map((p) => p.pantalla);
+  }
+
+  // Oculta/muestra pestañas, enlaces del encabezado y la tarjeta fija de
+  // recordatorios según lo que puede ver la persona que entró. Se llama
+  // cada vez que se refresca el dashboard (refreshAll) — así que si
+  // Santiago le quita/da acceso a alguien, se refleja la próxima vez que
+  // esa persona recargue o vuelva a entrar (no hace falta en tiempo real).
+  function aplicarPermisosUI() {
+    const permitidas = pantallasPermitidas();
+    const tabsVisibles = TABS.filter((t) => permitidas.includes(t));
+
+    if (tabsVisibles.length === 0) {
+      TABS.forEach((t) => $(`panel-${t}`).classList.add("hidden"));
+      $("tabs-bar").classList.add("hidden");
+      $("fab-add").classList.add("hidden");
+      $("dashboard-sin-acceso").classList.remove("hidden");
+    } else {
+      $("dashboard-sin-acceso").classList.add("hidden");
+      $("tabs-bar").classList.remove("hidden");
+      const activa = TABS.find((t) => !$(`panel-${t}`).classList.contains("hidden"));
+      if (!activa || !tabsVisibles.includes(activa)) {
+        switchTab(tabsVisibles[0]);
+      }
+      // Importante: switchTab reescribe el className de TODOS los botones
+      // de pestaña (le quita cualquier "hidden" que tuvieran) — por eso
+      // esto va siempre DESPUÉS de un posible switchTab, nunca antes, si no
+      // las pestañas ocultas reaparecerían solas.
+      TABS.forEach((t) => {
+        $(`tab-${t}-btn`).classList.toggle("hidden", !permitidas.includes(t));
+      });
+    }
+
+    $("link-proyectos").classList.toggle("hidden", !permitidas.includes("proyectos"));
+    $("link-proveedores").classList.toggle("hidden", !permitidas.includes("proveedores"));
+    $("link-recordatorios").classList.toggle("hidden", !permitidas.includes("recordatorios"));
+    $("link-permisos").classList.toggle("hidden", !state.isAdmin);
+    $("change-user-btn").classList.toggle("hidden", state.isAdmin);
+    $("recordatorios-card-wrap").classList.toggle("hidden", !permitidas.includes("recordatorios"));
+  }
+
+  $("open-permisos-btn").addEventListener("click", () => openPermisosView());
+  $("permisos-back-btn").addEventListener("click", () => showView("dashboard"));
+
+  async function openPermisosView() {
+    try {
+      state.permisos = await DATA.getPermisos();
+    } catch (err) {
+      toast("Error cargando permisos: " + err.message, true);
+    }
+    renderPermisosList();
+    showView("permisos");
+  }
+
+  function renderPermisosList() {
+    const cont = $("lista-permisos");
+    // Santiago no aparece en la lista — él siempre ve todo, no depende de
+    // esta tabla.
+    const integrantesLista = state.integrantes.filter((i) => i.nombre !== "Santiago");
+    $("permisos-vacio").classList.toggle("hidden", integrantesLista.length > 0);
+    cont.innerHTML = integrantesLista
+      .map((integrante) => {
+        const permitidas = state.permisos.filter((p) => p.integrante_id === integrante.id).map((p) => p.pantalla);
+        return `
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+        <p class="font-medium text-slate-900 mb-2">${esc(integrante.nombre)}</p>
+        <div class="grid grid-cols-2 gap-x-3 gap-y-1.5">
+          ${PANTALLAS_CATALOGO.map(
+            (p) => `
+          <label class="flex items-center gap-1.5 text-sm text-slate-700">
+            <input type="checkbox" class="permiso-check" data-integrante="${integrante.id}" data-pantalla="${p.key}" ${
+              permitidas.includes(p.key) ? "checked" : ""
+            } />
+            ${esc(p.label)}
+          </label>`
+          ).join("")}
+        </div>
+      </div>`;
+      })
+      .join("");
+    cont.querySelectorAll(".permiso-check").forEach((chk) => {
+      chk.addEventListener("change", async () => {
+        const integranteId = chk.dataset.integrante;
+        const pantalla = chk.dataset.pantalla;
+        const marcado = chk.checked;
+        chk.disabled = true;
+        try {
+          if (marcado) {
+            const nuevo = await DATA.addPermiso(integranteId, pantalla);
+            state.permisos.push(nuevo);
+          } else {
+            await DATA.removePermiso(integranteId, pantalla);
+            state.permisos = state.permisos.filter(
+              (p) => !(p.integrante_id === integranteId && p.pantalla === pantalla)
+            );
+          }
+        } catch (err) {
+          chk.checked = !marcado;
+          toast("No se pudo guardar: " + err.message, true);
+        } finally {
+          chk.disabled = false;
+        }
+      });
+    });
   }
 
   // Cuando un gasto se pagó con "dinero de otro proyecto" (fuente_fondos =

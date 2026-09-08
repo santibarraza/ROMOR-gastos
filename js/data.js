@@ -373,6 +373,40 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- PLAN DE ACCIÓN (pendientes por proyecto) --------------------
+  // Tareas/pendientes de un proyecto con fecha, ubicación, costo/cotización
+  // y responsable asignado, pensadas para mandarle a los trabajadores el
+  // panorama completo de actividades a realizar. A diferencia de
+  // recordatorios (generales o ligados), un pendiente de plan_accion
+  // SIEMPRE pertenece a un proyecto (proyecto_id not null). Se traen TODOS
+  // siempre (no se filtran por proyecto_id) y se filtran del lado del
+  // cliente, mismo patrón que presupuestos.
+  async function getPlanAccion() {
+    const { data, error } = await sb
+      .from("plan_accion")
+      .select("*, proyectos(nombre)")
+      .order("fecha", { ascending: true });
+    if (error) throw error;
+    return data;
+  }
+
+  async function savePlanAccionItem(item, id) {
+    if (id) {
+      const { data, error } = await sb.from("plan_accion").update(item).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await sb.from("plan_accion").insert(item).select().single();
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  async function deletePlanAccionItem(id) {
+    const { error } = await sb.from("plan_accion").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   return {
     getCategorias,
     getProveedores,
@@ -413,5 +447,8 @@ window.DATA = (function () {
     getRecordatorios,
     saveRecordatorio,
     deleteRecordatorio,
+    getPlanAccion,
+    savePlanAccionItem,
+    deletePlanAccionItem,
   };
 })();

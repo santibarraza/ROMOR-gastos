@@ -38,6 +38,19 @@
     // Si no es null, la mini-forma de presupuesto está EDITANDO ese
     // registro (en vez de agregando uno nuevo).
     editingPresupuestoId: null,
+    // Plan de acción: pendientes/tareas de un proyecto (ver sección "PLAN
+    // DE ACCIÓN" más abajo). Cada elemento trae {id, proyecto_id, titulo,
+    // fecha, ubicacion, costo, responsable, notas, hecho, ...} tal como
+    // llega de Supabase, más `proyectos:{nombre}` para poder mostrar la
+    // etiqueta de proyecto en la vista "todos los proyectos".
+    planAccion: [],
+    // Si no es null, la mini-forma de plan de acción está EDITANDO ese
+    // pendiente (en vez de agregando uno nuevo).
+    editingPlanAccionId: null,
+    // false = solo mostrar pendientes (los ya hechos quedan ocultos, para
+    // no saturar la lista) — se puede activar con el checkbox "Mostrar los
+    // que ya están hechos".
+    planMostrarHechos: false,
   };
 
   const $ = (id) => document.getElementById(id);
@@ -332,10 +345,11 @@
         const nBitacora = state.bitacora.filter((b) => b.proyecto_id === id).length;
         const nRecordatorios = state.recordatorios.filter((r) => r.proyecto_id === id).length;
         const nPresupuestos = state.presupuestos.filter((p) => p.proyecto_id === id).length;
+        const nPlanAccion = state.planAccion.filter((p) => p.proyecto_id === id).length;
         const detalle =
-          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios || nPresupuestos
-            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora, ${nRecordatorios} recordatorio(s) y ${nPresupuestos} presupuesto(s) de partida de este proyecto.`
-            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora, recordatorios ni presupuestos registrados.";
+          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios || nPresupuestos || nPlanAccion
+            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora, ${nRecordatorios} recordatorio(s), ${nPresupuestos} presupuesto(s) de partida y ${nPlanAccion} pendiente(s) del plan de acción de este proyecto.`
+            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora, recordatorios, presupuestos ni pendientes registrados.";
         if (!confirm(`¿Eliminar el proyecto "${nombre}"?${detalle} Esta acción no se puede deshacer.`)) return;
         try {
           await DATA.deleteProyecto(id);
@@ -346,8 +360,10 @@
           state.bitacora = state.bitacora.filter((b) => b.proyecto_id !== id);
           state.recordatorios = state.recordatorios.filter((r) => r.proyecto_id !== id);
           state.presupuestos = state.presupuestos.filter((p) => p.proyecto_id !== id);
+          state.planAccion = state.planAccion.filter((p) => p.proyecto_id !== id);
           renderRecordatoriosCard();
           renderPresupuesto();
+          renderPlanAccion();
           if (state.filtroProyecto === id) state.filtroProyecto = "";
           if (state.currentProject?.id === id) {
             state.currentProject = null;
@@ -800,13 +816,14 @@
       // Traemos TODOS los gastos/entradas/documentos/bitácora (de todos los
       // proyectos) y filtramos en el cliente — así la vista general y el
       // filtro por proyecto no requieren volver a pedir datos al servidor.
-      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos] = await Promise.all([
+      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos, planAccion] = await Promise.all([
         DATA.getGastos(),
         DATA.getEntradas(),
         DATA.getDocumentos(),
         DATA.getBitacora(),
         DATA.getRecordatorios(),
         DATA.getPresupuestos(),
+        DATA.getPlanAccion(),
       ]);
       state.gastos = gastos;
       state.entradas = entradas;
@@ -814,6 +831,7 @@
       state.bitacora = bitacora;
       state.recordatorios = recordatorios;
       state.presupuestos = presupuestos;
+      state.planAccion = planAccion;
     } catch (err) {
       toast("Error cargando datos: " + err.message, true);
       return;
@@ -828,6 +846,7 @@
     renderPrestamosList();
     renderRecordatoriosCard();
     renderPresupuesto();
+    renderPlanAccion();
   }
 
   // Compatibilidad: algunas partes del código piden solo refrescar gastos/entradas
@@ -852,6 +871,7 @@
     renderCreditosList();
     renderPrestamosList();
     renderPresupuesto();
+    renderPlanAccion();
   });
 
   function gastosFiltrados() {
@@ -915,13 +935,14 @@
   }
 
   // -------------------- TABS GASTOS / ENTRADAS / DOCUMENTOS / BITÁCORA --------------------
-  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos", "presupuesto"];
+  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos", "presupuesto", "plan"];
   $("tab-gastos-btn").addEventListener("click", () => switchTab("gastos"));
   $("tab-entradas-btn").addEventListener("click", () => switchTab("entradas"));
   $("tab-documentos-btn").addEventListener("click", () => switchTab("documentos"));
   $("tab-bitacora-btn").addEventListener("click", () => switchTab("bitacora"));
   $("tab-creditos-btn").addEventListener("click", () => switchTab("creditos"));
   $("tab-presupuesto-btn").addEventListener("click", () => switchTab("presupuesto"));
+  $("tab-plan-btn").addEventListener("click", () => switchTab("plan"));
 
   function switchTab(tab) {
     TABS.forEach((t) => {
@@ -1768,6 +1789,285 @@
         renderPresupuesto();
         toast(
           "No se pudo guardar: esa partida ya no existe (puede que se haya borrado desde otro dispositivo). Se actualizó la lista.",
+          true
+        );
+      } else {
+        errEl.textContent = "No se pudo guardar: " + err.message;
+        errEl.classList.remove("hidden");
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // -------------------- PLAN DE ACCIÓN (pendientes por proyecto) --------------------
+  // Tareas/pendientes de un proyecto con fecha, ubicación, costo/cotización
+  // y responsable asignado — pensado para mandarle a los trabajadores el
+  // panorama completo de actividades a realizar, y que ellos mismos puedan
+  // marcar lo que ya se hizo (todo el equipo comparte el mismo login). A
+  // diferencia de recordatorios, un pendiente SIEMPRE pertenece a un
+  // proyecto (no hay pendientes "generales" aquí).
+  function planAccionFiltrados() {
+    let lista = state.filtroProyecto
+      ? state.planAccion.filter((p) => p.proyecto_id === state.filtroProyecto)
+      : state.planAccion;
+    if (!state.planMostrarHechos) lista = lista.filter((p) => !p.hecho);
+    return lista;
+  }
+
+  // Mismo patrón de "estado por fecha" que recordatorioEstado (vencido /
+  // hoy / en Nd / fecha normal) pero tolera que la fecha sea null (los
+  // pendientes de plan de acción, a diferencia de recordatorios, no
+  // requieren fecha).
+  function planFechaEstado(fecha) {
+    if (!fecha) return { texto: "sin fecha", clase: "text-slate-400 bg-slate-50" };
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const f = new Date(fecha + "T00:00:00");
+    const dias = Math.round((f - hoy) / 86400000);
+    if (dias < 0) return { texto: `vencido hace ${-dias}d`, clase: "text-red-700 bg-red-50" };
+    if (dias === 0) return { texto: "hoy", clase: "text-red-700 bg-red-50" };
+    if (dias <= 3) return { texto: `en ${dias}d`, clase: "text-amber-700 bg-amber-50" };
+    return { texto: fmtFecha(fecha), clase: "text-slate-500 bg-slate-100" };
+  }
+
+  // Orden: pendientes primero (por fecha ascendente, los que no tienen
+  // fecha al final), y dentro de los ya hechos (solo aparecen si se activó
+  // "Mostrar los que ya están hechos"), los más recientes primero.
+  function planAccionOrden(a, b) {
+    if (!!a.hecho !== !!b.hecho) return a.hecho ? 1 : -1;
+    if (!a.hecho) {
+      if (!a.fecha && !b.fecha) return 0;
+      if (!a.fecha) return 1;
+      if (!b.fecha) return -1;
+      return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0;
+    }
+    return (b.hecho_en || "") < (a.hecho_en || "") ? -1 : (b.hecho_en || "") > (a.hecho_en || "") ? 1 : 0;
+  }
+
+  function planAccionRowHtml(p, { conProyecto }) {
+    const estado = planFechaEstado(p.fecha);
+    const proyectoTag =
+      conProyecto && p.proyectos?.nombre
+        ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5">${esc(p.proyectos.nombre)}</span>`
+        : "";
+    const fechaTag = p.hecho
+      ? `<span class="inline-block text-[10px] font-medium text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">✓ ${p.fecha ? fmtFecha(p.fecha) : "hecho"}</span>`
+      : `<span class="inline-block text-[10px] font-medium ${estado.clase} rounded px-1.5 py-0.5">${estado.texto}</span>`;
+    const ubicacionTag = p.ubicacion
+      ? `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">📍 ${esc(p.ubicacion)}</span>`
+      : "";
+    const costoTag =
+      p.costo !== null && p.costo !== undefined
+        ? `<span class="inline-block text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5">💰 ${fmt(p.costo)}</span>`
+        : "";
+    const responsableTag = p.responsable
+      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">👷 ${esc(p.responsable)}</span>`
+      : "";
+    const notasHtml = p.notas ? `<p class="text-xs text-slate-500 mt-1">${esc(p.notas)}</p>` : "";
+    return `
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3" data-plan-id="${p.id}">
+        <div class="flex items-start gap-2">
+          <input type="checkbox" class="plan-check mt-0.5 shrink-0 w-4 h-4 rounded border-slate-300" data-id="${p.id}" ${p.hecho ? "checked" : ""} />
+          <button type="button" class="plan-abrir min-w-0 flex-1 text-left" data-id="${p.id}">
+            <p class="text-sm ${p.hecho ? "text-slate-400 line-through" : "text-slate-800 font-medium"} break-words">${esc(p.titulo)}</p>
+            <div class="flex flex-wrap gap-1 mt-1.5">
+              ${proyectoTag}${fechaTag}${ubicacionTag}${costoTag}${responsableTag}
+            </div>
+            ${notasHtml}
+          </button>
+        </div>
+      </div>`;
+  }
+
+  async function togglePlanAccionHecho(id, hecho) {
+    const p = state.planAccion.find((x) => x.id === id);
+    if (!p) return;
+    const payload = {
+      hecho,
+      hecho_por: hecho ? state.currentUser : null,
+      hecho_en: hecho ? new Date().toISOString() : null,
+    };
+    try {
+      await DATA.savePlanAccionItem(payload, id);
+      Object.assign(p, payload);
+      renderPlanAccion();
+    } catch (err) {
+      toast("No se pudo actualizar: " + err.message, true);
+    }
+  }
+
+  function planResponsableOptions(selected) {
+    return (
+      '<option value="">— Sin asignar —</option>' +
+      state.integrantes.map((i) => `<option value="${esc(i.nombre)}">${esc(i.nombre)}</option>`).join("")
+    );
+  }
+
+  function renderPlanAccionFormOptions() {
+    const sel = $("plan-proyecto");
+    const actual = sel.value || defaultProyectoId() || state.proyectos[0]?.id || "";
+    sel.innerHTML = state.proyectos.map((pr) => `<option value="${pr.id}">${esc(pr.nombre)}</option>`).join("");
+    sel.value = actual;
+    $("plan-responsable").innerHTML = planResponsableOptions();
+  }
+
+  function resetPlanAccionForm() {
+    state.editingPlanAccionId = null;
+    $("plan-form-title").textContent = "Agregar pendiente";
+    $("plan-error").classList.add("hidden");
+    $("plan-titulo").value = "";
+    $("plan-fecha").value = "";
+    $("plan-ubicacion").value = "";
+    $("plan-costo").value = "";
+    $("plan-notas").value = "";
+    $("plan-proyecto").disabled = false;
+    renderPlanAccionFormOptions();
+    $("plan-responsable").value = "";
+    $("plan-guardar-btn").textContent = "Agregar";
+    $("plan-cancelar-btn").classList.add("hidden");
+    $("plan-eliminar-btn").classList.add("hidden");
+  }
+
+  $("plan-cancelar-btn").addEventListener("click", resetPlanAccionForm);
+  $("plan-mostrar-hechos").addEventListener("change", (e) => {
+    state.planMostrarHechos = e.target.checked;
+    renderPlanAccion();
+  });
+
+  function renderPlanAccion() {
+    if (!state.editingPlanAccionId) renderPlanAccionFormOptions();
+
+    const rows = planAccionFiltrados().slice().sort(planAccionOrden);
+    const mostrarTodos = !state.filtroProyecto;
+    const cont = $("lista-plan");
+    $("lista-plan-vacia").classList.toggle("hidden", rows.length > 0);
+    cont.innerHTML = rows.map((p) => planAccionRowHtml(p, { conProyecto: mostrarTodos })).join("");
+
+    cont.querySelectorAll(".plan-check").forEach((el) => {
+      el.addEventListener("click", (ev) => ev.stopPropagation());
+      el.addEventListener("change", () => togglePlanAccionHecho(el.dataset.id, el.checked));
+    });
+    cont.querySelectorAll(".plan-abrir").forEach((el) => {
+      el.addEventListener("click", () => openPlanAccionForEdit(el.dataset.id));
+    });
+
+    const base = state.filtroProyecto
+      ? state.planAccion.filter((p) => p.proyecto_id === state.filtroProyecto)
+      : state.planAccion;
+    const pendientes = base.filter((p) => !p.hecho).length;
+    const hechos = base.length - pendientes;
+    $("plan-resumen").textContent =
+      base.length === 0 ? "" : `${pendientes} pendiente(s) · ${hechos} hecho(s)`;
+  }
+
+  function openPlanAccionForEdit(id) {
+    const p = state.planAccion.find((x) => x.id === id);
+    if (!p) return;
+    state.editingPlanAccionId = id;
+    $("plan-form-title").textContent = "Editar pendiente";
+    $("plan-error").classList.add("hidden");
+    renderPlanAccionFormOptions();
+    $("plan-proyecto").value = p.proyecto_id;
+    $("plan-proyecto").disabled = true; // el proyecto no se cambia al editar, se borra y se vuelve a agregar si hace falta
+    $("plan-titulo").value = p.titulo || "";
+    $("plan-fecha").value = p.fecha || "";
+    $("plan-ubicacion").value = p.ubicacion || "";
+    $("plan-costo").value = p.costo === null || p.costo === undefined ? "" : p.costo;
+    $("plan-responsable").value = p.responsable || "";
+    $("plan-notas").value = p.notas || "";
+    $("plan-guardar-btn").textContent = "Guardar cambios";
+    $("plan-cancelar-btn").classList.remove("hidden");
+    $("plan-eliminar-btn").classList.remove("hidden");
+    $("plan-titulo").focus();
+  }
+
+  $("plan-eliminar-btn").addEventListener("click", async () => {
+    const id = state.editingPlanAccionId;
+    if (!id) return;
+    if (!confirm("¿Eliminar este pendiente? Esta acción no se puede deshacer.")) return;
+    try {
+      await DATA.deletePlanAccionItem(id);
+      state.planAccion = state.planAccion.filter((p) => p.id !== id);
+      resetPlanAccionForm();
+      toast("Pendiente eliminado");
+      renderPlanAccion();
+    } catch (err) {
+      toast("Error al eliminar: " + err.message, true);
+    }
+  });
+
+  $("plan-guardar-btn").addEventListener("click", async () => {
+    const errEl = $("plan-error");
+    errEl.classList.add("hidden");
+    const titulo = $("plan-titulo").value.trim();
+    if (!titulo) {
+      errEl.textContent = "Escribe qué hay que hacer.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    const costoRaw = $("plan-costo").value;
+    const costo = costoRaw === "" ? null : Number(costoRaw);
+    if (costoRaw !== "" && (isNaN(costo) || costo < 0)) {
+      errEl.textContent = "El precio/cotización debe ser un número válido.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    const btn = $("plan-guardar-btn");
+    btn.disabled = true;
+    try {
+      if (state.editingPlanAccionId) {
+        const payload = {
+          titulo,
+          fecha: $("plan-fecha").value || null,
+          ubicacion: $("plan-ubicacion").value.trim() || null,
+          costo,
+          responsable: $("plan-responsable").value || null,
+          notas: $("plan-notas").value.trim() || null,
+        };
+        const actualizado = await DATA.savePlanAccionItem(payload, state.editingPlanAccionId);
+        const idx = state.planAccion.findIndex((p) => p.id === state.editingPlanAccionId);
+        if (idx >= 0) state.planAccion[idx] = { ...state.planAccion[idx], ...actualizado };
+        toast("Pendiente actualizado");
+      } else {
+        const proyectoId = $("plan-proyecto").value;
+        if (!proyectoId) {
+          errEl.textContent = "Elige un proyecto.";
+          errEl.classList.remove("hidden");
+          return;
+        }
+        const payload = {
+          proyecto_id: proyectoId,
+          titulo,
+          fecha: $("plan-fecha").value || null,
+          ubicacion: $("plan-ubicacion").value.trim() || null,
+          costo,
+          responsable: $("plan-responsable").value || null,
+          notas: $("plan-notas").value.trim() || null,
+          creado_por: state.currentUser,
+        };
+        const nuevo = await DATA.savePlanAccionItem(payload, null);
+        const proyecto = state.proyectos.find((pr) => pr.id === proyectoId);
+        state.planAccion.push({ ...nuevo, proyectos: proyecto ? { nombre: proyecto.nombre } : null });
+        toast("Pendiente agregado");
+      }
+      resetPlanAccionForm();
+      renderPlanAccion();
+    } catch (err) {
+      // Mismo manejo defensivo que ya se usa en Presupuesto: si el pendiente
+      // que se estaba editando ya no existe (alguien más lo borró, o borró
+      // el proyecto completo, desde otro dispositivo), Supabase responde
+      // PGRST116 ("Cannot coerce the result to a single JSON object") — en
+      // vez de mostrar ese mensaje técnico, se refresca la lista y se
+      // explica en español qué pudo haber pasado.
+      if (err.code === "PGRST116") {
+        try {
+          state.planAccion = await DATA.getPlanAccion();
+        } catch (_) {}
+        resetPlanAccionForm();
+        renderPlanAccion();
+        toast(
+          "No se pudo guardar: ese pendiente ya no existe (puede que se haya borrado desde otro dispositivo). Se actualizó la lista.",
           true
         );
       } else {

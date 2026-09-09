@@ -1131,6 +1131,12 @@
     $("link-permisos").classList.toggle("hidden", !state.isAdmin);
     $("change-user-btn").classList.toggle("hidden", state.isAdmin);
     $("recordatorios-card-wrap").classList.toggle("hidden", !permitidas.includes("recordatorios"));
+    // Las 3 tarjetas de resumen (Entradas/Gastos/Saldo) arriba de las
+    // pestañas muestran montos de dinero, así que se ocultan igual que
+    // cualquier otra pantalla: solo las ve quien tenga acceso a la pestaña
+    // "Gastos" (o Santiago, que siempre ve todo). Esto NO afecta los
+    // reportes de Excel/PDF, que siguen sin estar controlados por Permisos.
+    $("resumen-cards").classList.toggle("hidden", !permitidas.includes("gastos"));
   }
 
   $("open-permisos-btn").addEventListener("click", () => openPermisosView());
@@ -2170,7 +2176,31 @@
     $("plan-eliminar-btn").classList.add("hidden");
   }
 
-  $("plan-cancelar-btn").addEventListener("click", resetPlanAccionForm);
+  // La forma de agregar/editar un pendiente vive en su propia pantalla
+  // completa (view-form-plan) — así la lista queda arriba de todo en la
+  // pestaña "Plan de acción" y no hay que hacer scroll para verla. Mismo
+  // patrón ya usado para "Nueva entrada".
+  function openPlanAccionForm(id) {
+    if (id) {
+      openPlanAccionForEdit(id);
+    } else {
+      resetPlanAccionForm();
+    }
+    showView("form-plan");
+    // El foco se pone hasta AQUÍ (después de mostrar la vista) — ponerlo
+    // antes no sirve de nada porque el campo todavía está oculto
+    // (view sin "active"), igual que con cualquier otro campo con
+    // `.focus()` en una pantalla completa que se abre después.
+    $("plan-titulo").focus();
+  }
+
+  $("plan-add-open-btn").addEventListener("click", () => openPlanAccionForm(null));
+  $("plan-form-back-btn").addEventListener("click", () => showView("dashboard"));
+
+  $("plan-cancelar-btn").addEventListener("click", () => {
+    resetPlanAccionForm();
+    showView("dashboard");
+  });
   $("plan-mostrar-hechos").addEventListener("change", (e) => {
     state.planMostrarHechos = e.target.checked;
     renderPlanAccion();
@@ -2190,7 +2220,7 @@
       el.addEventListener("change", () => togglePlanAccionHecho(el.dataset.id, el.checked));
     });
     cont.querySelectorAll(".plan-abrir").forEach((el) => {
-      el.addEventListener("click", () => openPlanAccionForEdit(el.dataset.id));
+      el.addEventListener("click", () => openPlanAccionForm(el.dataset.id));
     });
 
     const base = state.filtroProyecto
@@ -2220,7 +2250,6 @@
     $("plan-guardar-btn").textContent = "Guardar cambios";
     $("plan-cancelar-btn").classList.remove("hidden");
     $("plan-eliminar-btn").classList.remove("hidden");
-    $("plan-titulo").focus();
   }
 
   $("plan-eliminar-btn").addEventListener("click", async () => {
@@ -2232,6 +2261,7 @@
       state.planAccion = state.planAccion.filter((p) => p.id !== id);
       resetPlanAccionForm();
       toast("Pendiente eliminado");
+      showView("dashboard");
       renderPlanAccion();
     } catch (err) {
       toast("Error al eliminar: " + err.message, true);
@@ -2293,6 +2323,7 @@
         toast("Pendiente agregado");
       }
       resetPlanAccionForm();
+      showView("dashboard");
       renderPlanAccion();
     } catch (err) {
       // Mismo manejo defensivo que ya se usa en Presupuesto: si el pendiente
@@ -2306,6 +2337,7 @@
           state.planAccion = await DATA.getPlanAccion();
         } catch (_) {}
         resetPlanAccionForm();
+        showView("dashboard");
         renderPlanAccion();
         toast(
           "No se pudo guardar: ese pendiente ya no existe (puede que se haya borrado desde otro dispositivo). Se actualizó la lista.",

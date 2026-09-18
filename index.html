@@ -282,6 +282,7 @@
       <button id="tab-creditos-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Créditos</button>
       <button id="tab-presupuesto-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Presupuesto</button>
       <button id="tab-plan-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Plan de acción</button>
+      <button id="tab-riesgos-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Riesgos</button>
     </div>
 
     <!-- Se muestra en vez de las pestañas cuando Santiago todavía no le ha
@@ -431,6 +432,9 @@
     <div id="panel-presupuesto" class="hidden">
       <p class="text-xs text-slate-500 mb-3">Cuánto le asignas a cada partida y cuánto llevas gastado ahí, para no pasarte del presupuesto. Solo se muestran las partidas a las que les hayas puesto presupuesto.</p>
 
+      <p id="presupuesto-elige-proyecto" class="text-center text-slate-400 text-sm py-8 hidden">Elige un proyecto arriba (en el filtro) para ver y administrar su presupuesto — Presupuesto no se muestra combinado en "Todos los proyectos".</p>
+
+      <div id="presupuesto-contenido">
       <div class="grid grid-cols-3 gap-2 mb-4">
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
           <p class="text-[11px] text-slate-500">Presupuestado</p>
@@ -491,6 +495,7 @@
         </table>
       </div>
       <p id="presupuesto-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Todavía no le has puesto presupuesto a ninguna partida.</p>
+      </div>
     </div>
 
     <!-- ===== Panel de plan de acción (pendientes por proyecto) ===== -->
@@ -502,16 +507,73 @@
         </button>
       </div>
 
+      <!-- Hitos: fechas clave marcadas aparte de las tareas del día a día. -->
+      <div id="plan-hitos-wrap" class="hidden mb-4">
+        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">🏁 Hitos</h2>
+        <div id="plan-hitos" class="space-y-2"></div>
+      </div>
+
       <div class="flex items-center justify-between gap-2 mb-3">
-        <p id="plan-resumen" class="text-xs text-slate-500"></p>
+        <div class="flex gap-1.5">
+          <button type="button" id="plan-vista-lista-btn" data-vista="lista" class="plan-vista-btn rounded-lg py-1.5 px-3 text-xs font-medium bg-brand text-white">Lista</button>
+          <button type="button" id="plan-vista-cronograma-btn" data-vista="cronograma" class="plan-vista-btn rounded-lg py-1.5 px-3 text-xs font-medium bg-white border border-slate-300 text-slate-600">Cronograma</button>
+        </div>
         <label class="flex items-center gap-1.5 text-xs text-slate-600 whitespace-nowrap">
           <input id="plan-mostrar-hechos" type="checkbox" class="rounded border-slate-300" />
           Mostrar los que ya están hechos
         </label>
       </div>
+      <p id="plan-resumen" class="text-xs text-slate-500 mb-2"></p>
 
       <div id="lista-plan" class="space-y-2"></div>
+      <div id="plan-cronograma" class="space-y-4 hidden"></div>
       <p id="lista-plan-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Todavía no hay pendientes registrados.</p>
+    </div>
+
+    <!-- ===== Panel de riesgos (bitácora de riesgos, general o por proyecto) ===== -->
+    <div id="panel-riesgos" class="hidden">
+      <p class="text-xs text-slate-500 mb-3">Qué podría salir mal, qué tan grave sería, y qué se va a hacer al respecto. Un riesgo puede ser de un proyecto específico o general (aplica a todos).</p>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4 space-y-2">
+        <h2 id="riesgo-form-title" class="text-sm font-semibold text-slate-700 mb-1">Agregar riesgo</h2>
+        <input type="hidden" id="riesgo-id" />
+        <input id="riesgo-titulo" type="text" placeholder="Ej. Puede retrasarse la entrega de acero"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <select id="riesgo-proyecto" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"></select>
+        <div class="grid grid-cols-2 gap-2">
+          <select id="riesgo-probabilidad" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white">
+            <option value="baja">Probabilidad: baja</option>
+            <option value="media" selected>Probabilidad: media</option>
+            <option value="alta">Probabilidad: alta</option>
+          </select>
+          <select id="riesgo-impacto" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white">
+            <option value="bajo">Impacto: bajo</option>
+            <option value="medio" selected>Impacto: medio</option>
+            <option value="alto">Impacto: alto</option>
+          </select>
+        </div>
+        <select id="riesgo-responsable" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"></select>
+        <textarea id="riesgo-mitigacion" rows="2" placeholder="¿Qué se va a hacer si pasa? (opcional)"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+        <select id="riesgo-estado" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white">
+          <option value="abierto" selected>Abierto</option>
+          <option value="mitigado">Mitigado</option>
+          <option value="cerrado">Cerrado</option>
+        </select>
+        <p id="riesgo-error" class="text-red-600 text-xs hidden"></p>
+        <div class="flex items-center gap-3">
+          <button type="button" id="riesgo-guardar-btn" class="bg-brand text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-brand-dark">Agregar</button>
+          <button type="button" id="riesgo-cancelar-btn" class="text-sm text-slate-500 underline hidden">Cancelar edición</button>
+          <button type="button" id="riesgo-eliminar-btn" class="text-sm text-red-600 underline hidden ml-auto">Eliminar</button>
+        </div>
+      </div>
+
+      <label class="flex items-center gap-1.5 text-xs text-slate-600 whitespace-nowrap mb-2">
+        <input id="riesgo-mostrar-cerrados" type="checkbox" class="rounded border-slate-300" />
+        Mostrar los cerrados
+      </label>
+      <div id="lista-riesgos" class="space-y-2"></div>
+      <p id="lista-riesgos-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Todavía no hay riesgos registrados.</p>
     </div>
       </div>
     </div>
@@ -995,9 +1057,13 @@
         <input id="plan-fecha" type="date" class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
       </div>
       <div>
-        <label class="block text-sm font-medium text-slate-700 mb-1">Responsable (opcional)</label>
-        <select id="plan-responsable" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 bg-white"></select>
+        <label class="block text-sm font-medium text-slate-700 mb-1">Hora (opcional)</label>
+        <input id="plan-hora" type="time" class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
       </div>
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">Responsable (opcional)</label>
+      <select id="plan-responsable" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 bg-white"></select>
     </div>
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1">Ubicación (opcional)</label>
@@ -1008,6 +1074,19 @@
       <label class="block text-sm font-medium text-slate-700 mb-1">Precio o cotización (opcional)</label>
       <input id="plan-costo" type="number" step="0.01" min="0" placeholder="MXN"
         class="w-full rounded-lg border border-slate-300 px-3 py-2.5" />
+    </div>
+    <div>
+      <label class="block text-sm font-medium text-slate-700 mb-1">Depende de (opcional)</label>
+      <select id="plan-depende" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 bg-white">
+        <option value="">— Ninguno —</option>
+      </select>
+      <p class="text-[11px] text-slate-400 mt-1">Si eliges algo aquí, mientras esa tarea no esté hecha se muestra un aviso en esta — pero se puede marcar hecha de todos modos.</p>
+    </div>
+    <div>
+      <label class="flex items-center gap-2 text-sm text-slate-700">
+        <input id="plan-es-hito" type="checkbox" class="rounded border-slate-300" />
+        Es un hito (una fecha clave del proyecto, no una tarea del día a día)
+      </label>
     </div>
     <div>
       <label class="block text-sm font-medium text-slate-700 mb-1">Notas (opcional)</label>

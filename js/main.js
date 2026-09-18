@@ -51,6 +51,16 @@
     // no saturar la lista) — se puede activar con el checkbox "Mostrar los
     // que ya están hechos".
     planMostrarHechos: false,
+    // "lista" o "cronograma" — cómo se muestran los pendientes (no los
+    // hitos, que siempre van aparte arriba). Ver sección "CRONOGRAMA".
+    planVista: "lista",
+    // Riesgos (ver sección "RIESGOS" más abajo). Cada elemento trae
+    // {id, proyecto_id, titulo, probabilidad, impacto, mitigacion,
+    // responsable, estado, ...} tal como llega de Supabase, más
+    // `proyectos:{nombre}` (null si es un riesgo general).
+    riesgos: [],
+    editingRiesgoId: null,
+    riesgosMostrarCerrados: false,
     // true solo si se entró con la cuenta EXCLUSIVA de Santiago
     // (ADMIN_LOGIN_EMAIL en config.js), nunca con la contraseña compartida
     // del equipo — ver sección "PERMISOS" más abajo. Un admin ve TODAS las
@@ -441,10 +451,11 @@
         const nRecordatorios = state.recordatorios.filter((r) => r.proyecto_id === id).length;
         const nPresupuestos = state.presupuestos.filter((p) => p.proyecto_id === id).length;
         const nPlanAccion = state.planAccion.filter((p) => p.proyecto_id === id).length;
+        const nRiesgos = state.riesgos.filter((r) => r.proyecto_id === id).length;
         const detalle =
-          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios || nPresupuestos || nPlanAccion
-            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora, ${nRecordatorios} recordatorio(s), ${nPresupuestos} presupuesto(s) de partida y ${nPlanAccion} pendiente(s) del plan de acción de este proyecto.`
-            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora, recordatorios, presupuestos ni pendientes registrados.";
+          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios || nPresupuestos || nPlanAccion || nRiesgos
+            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora, ${nRecordatorios} recordatorio(s), ${nPresupuestos} presupuesto(s) de partida, ${nPlanAccion} pendiente(s) del plan de acción y ${nRiesgos} riesgo(s) de este proyecto.`
+            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora, recordatorios, presupuestos, pendientes ni riesgos registrados.";
         if (!confirm(`¿Eliminar el proyecto "${nombre}"?${detalle} Esta acción no se puede deshacer.`)) return;
         try {
           await DATA.deleteProyecto(id);
@@ -456,9 +467,11 @@
           state.recordatorios = state.recordatorios.filter((r) => r.proyecto_id !== id);
           state.presupuestos = state.presupuestos.filter((p) => p.proyecto_id !== id);
           state.planAccion = state.planAccion.filter((p) => p.proyecto_id !== id);
+          state.riesgos = state.riesgos.filter((r) => r.proyecto_id !== id);
           renderRecordatoriosCard();
           renderPresupuesto();
           renderPlanAccion();
+          renderRiesgos();
           if (state.filtroProyecto === id) state.filtroProyecto = "";
           if (state.currentProject?.id === id) {
             state.currentProject = null;
@@ -911,7 +924,7 @@
       // Traemos TODOS los gastos/entradas/documentos/bitácora (de todos los
       // proyectos) y filtramos en el cliente — así la vista general y el
       // filtro por proyecto no requieren volver a pedir datos al servidor.
-      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos, planAccion, permisos] =
+      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos, planAccion, riesgos, permisos] =
         await Promise.all([
           DATA.getGastos(),
           DATA.getEntradas(),
@@ -920,6 +933,7 @@
           DATA.getRecordatorios(),
           DATA.getPresupuestos(),
           DATA.getPlanAccion(),
+          DATA.getRiesgos(),
           DATA.getPermisos(),
         ]);
       state.gastos = gastos;
@@ -929,6 +943,7 @@
       state.recordatorios = recordatorios;
       state.presupuestos = presupuestos;
       state.planAccion = planAccion;
+      state.riesgos = riesgos;
       state.permisos = permisos;
     } catch (err) {
       toast("Error cargando datos: " + err.message, true);
@@ -945,6 +960,7 @@
     renderRecordatoriosCard();
     renderPresupuesto();
     renderPlanAccion();
+    renderRiesgos();
     aplicarPermisosUI();
   }
 
@@ -971,6 +987,7 @@
     renderPrestamosList();
     renderPresupuesto();
     renderPlanAccion();
+    renderRiesgos();
   });
 
   function gastosFiltrados() {
@@ -1034,7 +1051,7 @@
   }
 
   // -------------------- TABS GASTOS / ENTRADAS / DOCUMENTOS / BITÁCORA --------------------
-  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos", "presupuesto", "plan"];
+  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos", "presupuesto", "plan", "riesgos"];
   $("tab-gastos-btn").addEventListener("click", () => switchTab("gastos"));
   $("tab-entradas-btn").addEventListener("click", () => switchTab("entradas"));
   $("tab-documentos-btn").addEventListener("click", () => switchTab("documentos"));
@@ -1042,6 +1059,7 @@
   $("tab-creditos-btn").addEventListener("click", () => switchTab("creditos"));
   $("tab-presupuesto-btn").addEventListener("click", () => switchTab("presupuesto"));
   $("tab-plan-btn").addEventListener("click", () => switchTab("plan"));
+  $("tab-riesgos-btn").addEventListener("click", () => switchTab("riesgos"));
 
   function switchTab(tab) {
     TABS.forEach((t) => {
@@ -1066,7 +1084,7 @@
   }
 
   // -------------------- PERMISOS (qué pantallas puede ver cada integrante) --------------------
-  // Las 10 secciones que Santiago puede prender/apagar por persona: las 7
+  // Las 11 secciones que Santiago puede prender/apagar por persona: las 8
   // pestañas del dashboard más las 3 pantallas completas a las que se
   // entra desde los enlaces de arriba ("proyectos"/"recordatorios"/
   // "proveedores"). Esto NO restringe qué puede editar alguien que sí ve
@@ -1079,12 +1097,13 @@
     { key: "creditos", label: "Créditos" },
     { key: "presupuesto", label: "Presupuesto" },
     { key: "plan", label: "Plan de acción" },
+    { key: "riesgos", label: "Riesgos" },
     { key: "proyectos", label: "Proyectos" },
     { key: "recordatorios", label: "Recordatorios" },
     { key: "proveedores", label: "Proveedores" },
   ];
 
-  // Santiago (state.isAdmin) siempre ve las 10 — nunca depende de filas en
+  // Santiago (state.isAdmin) siempre ve las 11 — nunca depende de filas en
   // permisos_pantalla. Cualquier otro integrante ve solo lo que tenga
   // agregado ahí; si no tiene ninguna fila (o todavía no existe como
   // integrante), no ve nada.
@@ -1851,6 +1870,18 @@
   }
 
   function renderPresupuesto() {
+    // Presupuesto solo tiene sentido viendo UN proyecto a la vez — en
+    // "🌐 Todos los proyectos" se oculta todo (tarjetas, mini-forma y
+    // tabla) y se pide elegir un proyecto arriba, en vez de mezclar
+    // partidas de proyectos distintos.
+    if (!state.filtroProyecto) {
+      $("presupuesto-contenido").classList.add("hidden");
+      $("presupuesto-elige-proyecto").classList.remove("hidden");
+      return;
+    }
+    $("presupuesto-contenido").classList.remove("hidden");
+    $("presupuesto-elige-proyecto").classList.add("hidden");
+
     // Mantiene la mini-forma coherente si, por ejemplo, se borró desde
     // otra pestaña el proyecto que tenía seleccionado.
     if (!state.editingPresupuestoId) renderPresupuestoFormOptions();
@@ -2054,10 +2085,23 @@
   // marcar lo que ya se hizo (todo el equipo comparte el mismo login). A
   // diferencia de recordatorios, un pendiente SIEMPRE pertenece a un
   // proyecto (no hay pendientes "generales" aquí).
-  function planAccionFiltrados() {
-    let lista = state.filtroProyecto
+  function planAccionBase() {
+    return state.filtroProyecto
       ? state.planAccion.filter((p) => p.proyecto_id === state.filtroProyecto)
       : state.planAccion;
+  }
+
+  // Tareas normales (sin los hitos, que se muestran aparte arriba — ver
+  // renderPlanHitos), respetando el filtro de proyecto y el checkbox de
+  // "mostrar los que ya están hechos".
+  function planAccionFiltrados() {
+    let lista = planAccionBase().filter((p) => !p.es_hito);
+    if (!state.planMostrarHechos) lista = lista.filter((p) => !p.hecho);
+    return lista;
+  }
+
+  function planHitosFiltrados() {
+    let lista = planAccionBase().filter((p) => p.es_hito);
     if (!state.planMostrarHechos) lista = lista.filter((p) => !p.hecho);
     return lista;
   }
@@ -2087,7 +2131,14 @@
       if (!a.fecha && !b.fecha) return 0;
       if (!a.fecha) return 1;
       if (!b.fecha) return -1;
-      return a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : 0;
+      if (a.fecha !== b.fecha) return a.fecha < b.fecha ? -1 : 1;
+      // Mismo día: la hora (si la tienen) desempata; sin hora, al final del mismo día.
+      const ha = a.hora || "";
+      const hb = b.hora || "";
+      if (!ha && !hb) return 0;
+      if (!ha) return 1;
+      if (!hb) return -1;
+      return ha < hb ? -1 : ha > hb ? 1 : 0;
     }
     return (b.hecho_en || "") < (a.hecho_en || "") ? -1 : (b.hecho_en || "") > (a.hecho_en || "") ? 1 : 0;
   }
@@ -2098,9 +2149,10 @@
       conProyecto && p.proyectos?.nombre
         ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5">${esc(p.proyectos.nombre)}</span>`
         : "";
+    const horaSufijo = p.hora ? ` ${fmtHora(p.hora)}` : "";
     const fechaTag = p.hecho
-      ? `<span class="inline-block text-[10px] font-medium text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">✓ ${p.fecha ? fmtFecha(p.fecha) : "hecho"}</span>`
-      : `<span class="inline-block text-[10px] font-medium ${estado.clase} rounded px-1.5 py-0.5">${estado.texto}</span>`;
+      ? `<span class="inline-block text-[10px] font-medium text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">✓ ${p.fecha ? fmtFecha(p.fecha) + horaSufijo : "hecho"}</span>`
+      : `<span class="inline-block text-[10px] font-medium ${estado.clase} rounded px-1.5 py-0.5">${estado.texto}${p.fecha ? horaSufijo : ""}</span>`;
     const ubicacionTag = p.ubicacion
       ? `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">📍 ${esc(p.ubicacion)}</span>`
       : "";
@@ -2111,15 +2163,27 @@
     const responsableTag = p.responsable
       ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">👷 ${esc(p.responsable)}</span>`
       : "";
+    // Dependencia: solo es una advertencia visual (no bloquea marcar hecho).
+    // Si la tarea de la que depende ya no existe (se borró desde otro
+    // dispositivo) o ya está hecha, no se muestra nada.
+    const dependeDe = p.depende_de_id ? state.planAccion.find((x) => x.id === p.depende_de_id) : null;
+    const dependeTag =
+      dependeDe && !dependeDe.hecho
+        ? `<span class="inline-block text-[10px] font-medium text-amber-800 bg-amber-100 rounded px-1.5 py-0.5">⏳ depende de: ${esc(dependeDe.titulo)}</span>`
+        : "";
     const notasHtml = p.notas ? `<p class="text-xs text-slate-500 mt-1">${esc(p.notas)}</p>` : "";
+    const hitoBorde = p.es_hito ? " border-l-4 border-l-accent" : "";
+    const hitoTag = p.es_hito
+      ? `<span class="inline-block text-[10px] font-medium text-amber-900 bg-amber-50 rounded px-1.5 py-0.5">🏁 Hito</span>`
+      : "";
     return `
-      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3" data-plan-id="${p.id}">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3${hitoBorde}" data-plan-id="${p.id}">
         <div class="flex items-start gap-2">
           <input type="checkbox" class="plan-check mt-0.5 shrink-0 w-4 h-4 rounded border-slate-300" data-id="${p.id}" ${p.hecho ? "checked" : ""} />
           <button type="button" class="plan-abrir min-w-0 flex-1 text-left" data-id="${p.id}">
             <p class="text-sm ${p.hecho ? "text-slate-400 line-through" : "text-slate-800 font-medium"} break-words">${esc(p.titulo)}</p>
             <div class="flex flex-wrap gap-1 mt-1.5">
-              ${proyectoTag}${fechaTag}${ubicacionTag}${costoTag}${responsableTag}
+              ${hitoTag}${proyectoTag}${fechaTag}${ubicacionTag}${costoTag}${responsableTag}${dependeTag}
             </div>
             ${notasHtml}
           </button>
@@ -2151,13 +2215,43 @@
     );
   }
 
+  // Opciones para "Depende de": solo otros pendientes del MISMO proyecto
+  // (una dependencia entre proyectos distintos no tendría mucho sentido), y
+  // nunca el propio pendiente que se está editando (excludeId).
+  function planDependeOptions(proyectoId, excludeId) {
+    const candidatos = state.planAccion.filter((p) => p.proyecto_id === proyectoId && p.id !== excludeId);
+    return (
+      '<option value="">— Ninguno —</option>' +
+      candidatos
+        .map((p) => `<option value="${p.id}">${p.es_hito ? "🏁 " : ""}${esc(p.titulo)}${p.hecho ? " (hecho)" : ""}</option>`)
+        .join("")
+    );
+  }
+
+  function renderPlanDependeOptions() {
+    const proyectoId = $("plan-proyecto").value;
+    const excludeId = state.editingPlanAccionId || null;
+    const actual = $("plan-depende").value;
+    $("plan-depende").innerHTML = planDependeOptions(proyectoId, excludeId);
+    $("plan-depende").value = actual;
+  }
+
   function renderPlanAccionFormOptions() {
     const sel = $("plan-proyecto");
     const actual = sel.value || defaultProyectoId() || state.proyectos[0]?.id || "";
     sel.innerHTML = state.proyectos.map((pr) => `<option value="${pr.id}">${esc(pr.nombre)}</option>`).join("");
     sel.value = actual;
     $("plan-responsable").innerHTML = planResponsableOptions();
+    renderPlanDependeOptions();
   }
+
+  // Si se cambia el proyecto mientras se agrega un pendiente nuevo (el
+  // select solo está habilitado en ese caso — al editar queda bloqueado),
+  // las opciones de "Depende de" tienen que refrescarse a las tareas del
+  // proyecto recién elegido.
+  $("plan-proyecto").addEventListener("change", () => {
+    if (!state.editingPlanAccionId) renderPlanDependeOptions();
+  });
 
   function resetPlanAccionForm() {
     state.editingPlanAccionId = null;
@@ -2165,12 +2259,15 @@
     $("plan-error").classList.add("hidden");
     $("plan-titulo").value = "";
     $("plan-fecha").value = "";
+    $("plan-hora").value = "";
     $("plan-ubicacion").value = "";
     $("plan-costo").value = "";
     $("plan-notas").value = "";
+    $("plan-es-hito").checked = false;
     $("plan-proyecto").disabled = false;
     renderPlanAccionFormOptions();
     $("plan-responsable").value = "";
+    $("plan-depende").value = "";
     $("plan-guardar-btn").textContent = "Agregar";
     $("plan-cancelar-btn").classList.add("hidden");
     $("plan-eliminar-btn").classList.add("hidden");
@@ -2206,14 +2303,81 @@
     renderPlanAccion();
   });
 
-  function renderPlanAccion() {
-    if (!state.editingPlanAccionId) renderPlanAccionFormOptions();
+  // -------------------- CRONOGRAMA (agrupar Plan de acción por semana) --------------------
+  // Alternativa a la lista plana: agrupa los mismos pendientes (sin los
+  // hitos, que ya se ven aparte arriba) por semana de su fecha, para ver de
+  // un vistazo qué carga tiene cada semana. Los sin fecha van en su propio
+  // grupo al final. Es solo otra forma de ver los mismos datos — no cambia
+  // nada al guardar ni al marcar hecho.
+  document.querySelectorAll(".plan-vista-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.planVista = btn.dataset.vista;
+      document.querySelectorAll(".plan-vista-btn").forEach((b) => {
+        const activo = b.dataset.vista === state.planVista;
+        b.className =
+          "plan-vista-btn rounded-lg py-1.5 px-3 text-xs font-medium " +
+          (activo ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
+      });
+      renderPlanAccion();
+    });
+  });
 
-    const rows = planAccionFiltrados().slice().sort(planAccionOrden);
-    const mostrarTodos = !state.filtroProyecto;
-    const cont = $("lista-plan");
-    $("lista-plan-vacia").classList.toggle("hidden", rows.length > 0);
-    cont.innerHTML = rows.map((p) => planAccionRowHtml(p, { conProyecto: mostrarTodos })).join("");
+  // Lunes de la semana de una fecha "YYYY-MM-DD", como clave de grupo.
+  function lunesDeSemana(fecha) {
+    const f = new Date(fecha + "T00:00:00");
+    const diaSemana = (f.getDay() + 6) % 7; // 0 = lunes ... 6 = domingo
+    f.setDate(f.getDate() - diaSemana);
+    return f.toISOString().slice(0, 10);
+  }
+
+  function semanaLabel(lunesStr) {
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0);
+    const lunesHoy = new Date(lunesDeSemana(hoy.toISOString().slice(0, 10)) + "T00:00:00");
+    const lunes = new Date(lunesStr + "T00:00:00");
+    const diffSemanas = Math.round((lunes - lunesHoy) / (7 * 86400000));
+    const domingo = new Date(lunes);
+    domingo.setDate(domingo.getDate() + 6);
+    const rango = `${fmtFecha(lunesStr)} – ${fmtFecha(domingo.toISOString().slice(0, 10))}`;
+    if (diffSemanas === 0) return `Esta semana (${rango})`;
+    if (diffSemanas === 1) return `Próxima semana (${rango})`;
+    if (diffSemanas === -1) return `Semana pasada (${rango})`;
+    if (diffSemanas < 0) return `Hace ${-diffSemanas} semanas (${rango})`;
+    return `En ${diffSemanas} semanas (${rango})`;
+  }
+
+  function renderPlanCronograma(rows, mostrarTodos) {
+    const cont = $("plan-cronograma");
+    const conFecha = rows.filter((p) => p.fecha).sort(planAccionOrden);
+    const sinFecha = rows.filter((p) => !p.fecha);
+
+    const grupos = new Map(); // lunesStr -> [pendientes]
+    conFecha.forEach((p) => {
+      const clave = lunesDeSemana(p.fecha);
+      if (!grupos.has(clave)) grupos.set(clave, []);
+      grupos.get(clave).push(p);
+    });
+    const clavesOrdenadas = Array.from(grupos.keys()).sort();
+
+    let html = clavesOrdenadas
+      .map((clave) => {
+        const items = grupos.get(clave);
+        return `
+        <div>
+          <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">${semanaLabel(clave)} · ${items.length} pendiente(s)</h3>
+          <div class="space-y-2">${items.map((p) => planAccionRowHtml(p, { conProyecto: mostrarTodos })).join("")}</div>
+        </div>`;
+      })
+      .join("");
+
+    if (sinFecha.length > 0) {
+      html += `
+        <div>
+          <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">Sin fecha · ${sinFecha.length} pendiente(s)</h3>
+          <div class="space-y-2">${sinFecha.map((p) => planAccionRowHtml(p, { conProyecto: mostrarTodos })).join("")}</div>
+        </div>`;
+    }
+    cont.innerHTML = html;
 
     cont.querySelectorAll(".plan-check").forEach((el) => {
       el.addEventListener("click", (ev) => ev.stopPropagation());
@@ -2222,10 +2386,51 @@
     cont.querySelectorAll(".plan-abrir").forEach((el) => {
       el.addEventListener("click", () => openPlanAccionForm(el.dataset.id));
     });
+  }
 
-    const base = state.filtroProyecto
-      ? state.planAccion.filter((p) => p.proyecto_id === state.filtroProyecto)
-      : state.planAccion;
+  function renderPlanHitos() {
+    const hitos = planHitosFiltrados().slice().sort(planAccionOrden);
+    const mostrarTodos = !state.filtroProyecto;
+    $("plan-hitos-wrap").classList.toggle("hidden", hitos.length === 0);
+    const cont = $("plan-hitos");
+    cont.innerHTML = hitos.map((p) => planAccionRowHtml(p, { conProyecto: mostrarTodos })).join("");
+    cont.querySelectorAll(".plan-check").forEach((el) => {
+      el.addEventListener("click", (ev) => ev.stopPropagation());
+      el.addEventListener("change", () => togglePlanAccionHecho(el.dataset.id, el.checked));
+    });
+    cont.querySelectorAll(".plan-abrir").forEach((el) => {
+      el.addEventListener("click", () => openPlanAccionForm(el.dataset.id));
+    });
+  }
+
+  function renderPlanAccion() {
+    if (!state.editingPlanAccionId) renderPlanAccionFormOptions();
+
+    renderPlanHitos();
+
+    const rows = planAccionFiltrados().slice().sort(planAccionOrden);
+    const mostrarTodos = !state.filtroProyecto;
+    const enCronograma = state.planVista === "cronograma";
+
+    $("lista-plan").classList.toggle("hidden", enCronograma);
+    $("plan-cronograma").classList.toggle("hidden", !enCronograma);
+    $("lista-plan-vacia").classList.toggle("hidden", rows.length > 0);
+
+    if (enCronograma) {
+      renderPlanCronograma(rows, mostrarTodos);
+    } else {
+      const cont = $("lista-plan");
+      cont.innerHTML = rows.map((p) => planAccionRowHtml(p, { conProyecto: mostrarTodos })).join("");
+      cont.querySelectorAll(".plan-check").forEach((el) => {
+        el.addEventListener("click", (ev) => ev.stopPropagation());
+        el.addEventListener("change", () => togglePlanAccionHecho(el.dataset.id, el.checked));
+      });
+      cont.querySelectorAll(".plan-abrir").forEach((el) => {
+        el.addEventListener("click", () => openPlanAccionForm(el.dataset.id));
+      });
+    }
+
+    const base = planAccionBase();
     const pendientes = base.filter((p) => !p.hecho).length;
     const hechos = base.length - pendientes;
     $("plan-resumen").textContent =
@@ -2243,10 +2448,18 @@
     $("plan-proyecto").disabled = true; // el proyecto no se cambia al editar, se borra y se vuelve a agregar si hace falta
     $("plan-titulo").value = p.titulo || "";
     $("plan-fecha").value = p.fecha || "";
+    $("plan-hora").value = p.hora ? p.hora.slice(0, 5) : "";
     $("plan-ubicacion").value = p.ubicacion || "";
     $("plan-costo").value = p.costo === null || p.costo === undefined ? "" : p.costo;
     $("plan-responsable").value = p.responsable || "";
     $("plan-notas").value = p.notas || "";
+    $("plan-es-hito").checked = !!p.es_hito;
+    // renderPlanAccionFormOptions() de arriba calculó las opciones de
+    // "Depende de" con el proyecto que tenía el select ANTES de fijarlo a
+    // p.proyecto_id (línea de arriba) — hay que recalcularlas ya con el
+    // proyecto correcto antes de seleccionar el valor guardado.
+    renderPlanDependeOptions();
+    $("plan-depende").value = p.depende_de_id || "";
     $("plan-guardar-btn").textContent = "Guardar cambios";
     $("plan-cancelar-btn").classList.remove("hidden");
     $("plan-eliminar-btn").classList.remove("hidden");
@@ -2291,10 +2504,13 @@
         const payload = {
           titulo,
           fecha: $("plan-fecha").value || null,
+          hora: $("plan-hora").value || null,
           ubicacion: $("plan-ubicacion").value.trim() || null,
           costo,
           responsable: $("plan-responsable").value || null,
           notas: $("plan-notas").value.trim() || null,
+          es_hito: $("plan-es-hito").checked,
+          depende_de_id: $("plan-depende").value || null,
         };
         const actualizado = await DATA.savePlanAccionItem(payload, state.editingPlanAccionId);
         const idx = state.planAccion.findIndex((p) => p.id === state.editingPlanAccionId);
@@ -2311,10 +2527,13 @@
           proyecto_id: proyectoId,
           titulo,
           fecha: $("plan-fecha").value || null,
+          hora: $("plan-hora").value || null,
           ubicacion: $("plan-ubicacion").value.trim() || null,
           costo,
           responsable: $("plan-responsable").value || null,
           notas: $("plan-notas").value.trim() || null,
+          es_hito: $("plan-es-hito").checked,
+          depende_de_id: $("plan-depende").value || null,
           creado_por: state.currentUser,
         };
         const nuevo = await DATA.savePlanAccionItem(payload, null);
@@ -2351,6 +2570,209 @@
       btn.disabled = false;
     }
   });
+
+  // -------------------- RIESGOS (bitácora de riesgos, general o por proyecto) --------------------
+  // Qué podría salir mal, qué tan grave sería, y qué se va a hacer al
+  // respecto. Un riesgo puede estar ligado a un proyecto o ser general (no
+  // ligado a ninguno) — mismo criterio que recordatorios. La mini-forma
+  // vive dentro de la propia pestaña (mismo patrón ya usado en Presupuesto),
+  // no en su propia pantalla completa.
+  const RIESGO_PROB_LABEL = { baja: "Probabilidad baja", media: "Probabilidad media", alta: "Probabilidad alta" };
+  const RIESGO_PROB_CLASE = {
+    baja: "text-emerald-700 bg-emerald-50",
+    media: "text-amber-700 bg-amber-50",
+    alta: "text-red-700 bg-red-50",
+  };
+  const RIESGO_IMPACTO_LABEL = { bajo: "Impacto bajo", medio: "Impacto medio", alto: "Impacto alto" };
+  const RIESGO_IMPACTO_CLASE = {
+    bajo: "text-emerald-700 bg-emerald-50",
+    medio: "text-amber-700 bg-amber-50",
+    alto: "text-red-700 bg-red-50",
+  };
+  const RIESGO_ESTADO_LABEL = { abierto: "Abierto", mitigado: "Mitigado", cerrado: "Cerrado" };
+  const RIESGO_ESTADO_CLASE = {
+    abierto: "text-red-700 bg-red-50",
+    mitigado: "text-amber-700 bg-amber-50",
+    cerrado: "text-slate-500 bg-slate-100",
+  };
+
+  function riesgosFiltrados() {
+    // Un riesgo general (proyecto_id null) aplica a cualquier proyecto, así
+    // que se muestra siempre, esté o no filtrado el dashboard a un proyecto
+    // específico — solo se ocultan los riesgos ligados a OTRO proyecto
+    // distinto del filtrado.
+    let lista = state.filtroProyecto
+      ? state.riesgos.filter((r) => !r.proyecto_id || r.proyecto_id === state.filtroProyecto)
+      : state.riesgos;
+    if (!state.riesgosMostrarCerrados) lista = lista.filter((r) => r.estado !== "cerrado");
+    return lista;
+  }
+
+  function riesgoRowHtml(r, { conProyecto }) {
+    const proyectoTag = r.proyectos?.nombre
+      ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5">${esc(r.proyectos.nombre)}</span>`
+      : conProyecto
+      ? `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">General</span>`
+      : "";
+    const probTag = `<span class="inline-block text-[10px] font-medium ${RIESGO_PROB_CLASE[r.probabilidad] || ""} rounded px-1.5 py-0.5">${RIESGO_PROB_LABEL[r.probabilidad] || r.probabilidad}</span>`;
+    const impactoTag = `<span class="inline-block text-[10px] font-medium ${RIESGO_IMPACTO_CLASE[r.impacto] || ""} rounded px-1.5 py-0.5">${RIESGO_IMPACTO_LABEL[r.impacto] || r.impacto}</span>`;
+    const estadoTag = `<span class="inline-block text-[10px] font-medium ${RIESGO_ESTADO_CLASE[r.estado] || ""} rounded px-1.5 py-0.5">${RIESGO_ESTADO_LABEL[r.estado] || r.estado}</span>`;
+    const responsableTag = r.responsable
+      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">👷 ${esc(r.responsable)}</span>`
+      : "";
+    const mitigacionHtml = r.mitigacion
+      ? `<p class="text-xs text-slate-500 mt-1"><span class="font-medium text-slate-600">Mitigación:</span> ${esc(r.mitigacion)}</p>`
+      : "";
+    return `
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3" data-riesgo-id="${r.id}">
+        <button type="button" class="riesgo-abrir w-full text-left" data-id="${r.id}">
+          <p class="text-sm ${r.estado === "cerrado" ? "text-slate-400 line-through" : "text-slate-800 font-medium"} break-words">${esc(r.titulo)}</p>
+          <div class="flex flex-wrap gap-1 mt-1.5">
+            ${estadoTag}${proyectoTag}${probTag}${impactoTag}${responsableTag}
+          </div>
+          ${mitigacionHtml}
+        </button>
+      </div>`;
+  }
+
+  function riesgoProyectoOptions() {
+    return (
+      '<option value="">— General, no ligado a un proyecto —</option>' +
+      state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("")
+    );
+  }
+
+  function resetRiesgoForm() {
+    state.editingRiesgoId = null;
+    $("riesgo-form-title").textContent = "Agregar riesgo";
+    $("riesgo-id").value = "";
+    $("riesgo-error").classList.add("hidden");
+    $("riesgo-titulo").value = "";
+    $("riesgo-proyecto").innerHTML = riesgoProyectoOptions();
+    $("riesgo-proyecto").value = state.filtroProyecto || "";
+    $("riesgo-probabilidad").value = "media";
+    $("riesgo-impacto").value = "medio";
+    $("riesgo-responsable").innerHTML = planResponsableOptions();
+    $("riesgo-responsable").value = "";
+    $("riesgo-mitigacion").value = "";
+    $("riesgo-estado").value = "abierto";
+    $("riesgo-guardar-btn").textContent = "Agregar";
+    $("riesgo-cancelar-btn").classList.add("hidden");
+    $("riesgo-eliminar-btn").classList.add("hidden");
+  }
+
+  function openRiesgoForEdit(id) {
+    const r = state.riesgos.find((x) => x.id === id);
+    if (!r) return;
+    state.editingRiesgoId = id;
+    $("riesgo-form-title").textContent = "Editar riesgo";
+    $("riesgo-id").value = r.id;
+    $("riesgo-error").classList.add("hidden");
+    $("riesgo-titulo").value = r.titulo || "";
+    $("riesgo-proyecto").innerHTML = riesgoProyectoOptions();
+    $("riesgo-proyecto").value = r.proyecto_id || "";
+    $("riesgo-probabilidad").value = r.probabilidad || "media";
+    $("riesgo-impacto").value = r.impacto || "medio";
+    $("riesgo-responsable").innerHTML = planResponsableOptions();
+    $("riesgo-responsable").value = r.responsable || "";
+    $("riesgo-mitigacion").value = r.mitigacion || "";
+    $("riesgo-estado").value = r.estado || "abierto";
+    $("riesgo-guardar-btn").textContent = "Guardar cambios";
+    $("riesgo-cancelar-btn").classList.remove("hidden");
+    $("riesgo-eliminar-btn").classList.remove("hidden");
+    // Sube el foco a la propia forma de riesgos para que se note que se
+    // abrió en modo edición (la forma vive dentro de la misma pestaña, no
+    // en una pantalla aparte).
+    $("riesgo-titulo").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  $("riesgo-cancelar-btn").addEventListener("click", () => resetRiesgoForm());
+  $("riesgo-mostrar-cerrados").addEventListener("change", (e) => {
+    state.riesgosMostrarCerrados = e.target.checked;
+    renderRiesgos();
+  });
+
+  $("riesgo-guardar-btn").addEventListener("click", async () => {
+    const errEl = $("riesgo-error");
+    errEl.classList.add("hidden");
+    const titulo = $("riesgo-titulo").value.trim();
+    if (!titulo) {
+      errEl.textContent = "Escribe el riesgo.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    const btn = $("riesgo-guardar-btn");
+    btn.disabled = true;
+    try {
+      const payload = {
+        titulo,
+        proyecto_id: $("riesgo-proyecto").value || null,
+        probabilidad: $("riesgo-probabilidad").value,
+        impacto: $("riesgo-impacto").value,
+        responsable: $("riesgo-responsable").value || null,
+        mitigacion: $("riesgo-mitigacion").value.trim() || null,
+        estado: $("riesgo-estado").value,
+      };
+      const id = state.editingRiesgoId;
+      if (id) {
+        const actualizado = await DATA.saveRiesgo(payload, id);
+        const idx = state.riesgos.findIndex((r) => r.id === id);
+        if (idx >= 0) state.riesgos[idx] = { ...state.riesgos[idx], ...actualizado };
+        toast("Riesgo actualizado");
+      } else {
+        payload.creado_por = state.currentUser;
+        const nuevo = await DATA.saveRiesgo(payload, null);
+        const proyecto = state.proyectos.find((p) => p.id === payload.proyecto_id);
+        state.riesgos.unshift({ ...nuevo, proyectos: proyecto ? { nombre: proyecto.nombre } : null });
+        toast("Riesgo agregado");
+      }
+      resetRiesgoForm();
+      renderRiesgos();
+    } catch (err) {
+      if (err.code === "PGRST116") {
+        try {
+          state.riesgos = await DATA.getRiesgos();
+        } catch (_) {}
+        resetRiesgoForm();
+        renderRiesgos();
+        toast(
+          "No se pudo guardar: ese riesgo ya no existe (puede que se haya borrado desde otro dispositivo). Se actualizó la lista.",
+          true
+        );
+      } else {
+        errEl.textContent = "No se pudo guardar: " + err.message;
+        errEl.classList.remove("hidden");
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("riesgo-eliminar-btn").addEventListener("click", async () => {
+    const id = state.editingRiesgoId;
+    if (!id) return;
+    if (!confirm("¿Eliminar este riesgo? Esta acción no se puede deshacer.")) return;
+    try {
+      await DATA.deleteRiesgo(id);
+      state.riesgos = state.riesgos.filter((r) => r.id !== id);
+      resetRiesgoForm();
+      toast("Riesgo eliminado");
+      renderRiesgos();
+    } catch (err) {
+      toast("Error al eliminar: " + err.message, true);
+    }
+  });
+
+  function renderRiesgos() {
+    const rows = riesgosFiltrados();
+    const mostrarTodos = !state.filtroProyecto;
+    const cont = $("lista-riesgos");
+    $("lista-riesgos-vacia").classList.toggle("hidden", rows.length > 0);
+    cont.innerHTML = rows.map((r) => riesgoRowHtml(r, { conProyecto: mostrarTodos })).join("");
+    cont.querySelectorAll(".riesgo-abrir").forEach((el) => {
+      el.addEventListener("click", () => openRiesgoForEdit(el.dataset.id));
+    });
+  }
 
   // -------------------- ENTRADAS --------------------
   function renderEntradasList() {
@@ -3315,6 +3737,19 @@
     if (!f) return "";
     const [y, m, d] = f.split("-");
     return `${d}/${m}/${y}`;
+  }
+
+  // Convierte la hora que regresa Postgres ("HH:MM:SS", a veces "HH:MM")
+  // a formato de 12 horas, ej. "3:00 pm". Devuelve "" si no hay hora.
+  function fmtHora(h) {
+    if (!h) return "";
+    const [hStr, mStr] = h.split(":");
+    let hora = Number(hStr);
+    const min = (mStr || "00").padStart(2, "0");
+    const sufijo = hora >= 12 ? "pm" : "am";
+    hora = hora % 12;
+    if (hora === 0) hora = 12;
+    return `${hora}:${min} ${sufijo}`;
   }
 
   function esc(s) {

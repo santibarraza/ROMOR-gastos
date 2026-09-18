@@ -407,6 +407,36 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- RIESGOS (bitácora de riesgos, general o por proyecto) --------------------
+  // Un riesgo puede estar ligado a un proyecto o ser general (proyecto_id
+  // null, mismo criterio que recordatorios) — se traen TODOS siempre y se
+  // filtran del lado del cliente, mismo patrón que presupuestos/plan_accion.
+  async function getRiesgos() {
+    const { data, error } = await sb
+      .from("riesgos")
+      .select("*, proyectos(nombre)")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+
+  async function saveRiesgo(riesgo, id) {
+    if (id) {
+      const { data, error } = await sb.from("riesgos").update(riesgo).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await sb.from("riesgos").insert(riesgo).select().single();
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  async function deleteRiesgo(id) {
+    const { error } = await sb.from("riesgos").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   // -------------------- PERMISOS (qué pantallas puede ver cada integrante) --------------------
   async function getPermisos() {
     const { data, error } = await sb.from("permisos_pantalla").select("*");
@@ -476,6 +506,9 @@ window.DATA = (function () {
     getPlanAccion,
     savePlanAccionItem,
     deletePlanAccionItem,
+    getRiesgos,
+    saveRiesgo,
+    deleteRiesgo,
     getPermisos,
     addPermiso,
     removePermiso,

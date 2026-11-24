@@ -283,6 +283,7 @@
       <button id="tab-presupuesto-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Presupuesto</button>
       <button id="tab-plan-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Plan de acción</button>
       <button id="tab-riesgos-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Riesgos</button>
+      <button id="tab-acabados-btn" class="tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-600">Acabados</button>
     </div>
 
     <!-- Se muestra en vez de las pestañas cuando Santiago todavía no le ha
@@ -574,6 +575,45 @@
       </label>
       <div id="lista-riesgos" class="space-y-2"></div>
       <p id="lista-riesgos-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Todavía no hay riesgos registrados.</p>
+    </div>
+
+    <!-- ===== Panel de acabados ===== -->
+    <div id="panel-acabados" class="hidden">
+      <p class="text-xs text-slate-500 mb-3">Qué se puso exactamente en cada zona de la obra: pinturas, pisos, azulejos y demás acabados, con su marca/color y proveedor. Siempre pertenece a un proyecto.</p>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4 space-y-2">
+        <h2 id="acabado-form-title" class="text-sm font-semibold text-slate-700 mb-1">Agregar acabado</h2>
+        <input type="hidden" id="acabado-id" />
+        <select id="acabado-proyecto" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"></select>
+        <input id="acabado-zona" type="text" placeholder="Zona (ej. Recámara principal, Fachada, Cocina)"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <select id="acabado-categoria" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white">
+          <option value="pintura">🎨 Pintura</option>
+          <option value="piso">🧱 Piso</option>
+          <option value="azulejo">◻️ Azulejo</option>
+          <option value="herreria">🔩 Herrería</option>
+          <option value="carpinteria">🪵 Carpintería</option>
+          <option value="canceleria">🚪 Cancelería</option>
+          <option value="otro">✨ Otro</option>
+        </select>
+        <input id="acabado-categoria-otro" type="text" placeholder="¿Qué tipo de acabado es?"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm hidden" />
+        <input id="acabado-marca-color" type="text" placeholder="Marca / color / modelo (ej. Comex Vinimex, Blanco Hueso mate)"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <input id="acabado-proveedor" type="text" placeholder="Proveedor (opcional)"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+        <textarea id="acabado-notas" rows="2" placeholder="Notas (opcional)"
+          class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"></textarea>
+        <p id="acabado-error" class="text-red-600 text-xs hidden"></p>
+        <div class="flex items-center gap-3">
+          <button type="button" id="acabado-guardar-btn" class="bg-brand text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-brand-dark">Agregar</button>
+          <button type="button" id="acabado-cancelar-btn" class="text-sm text-slate-500 underline hidden">Cancelar edición</button>
+          <button type="button" id="acabado-eliminar-btn" class="text-sm text-red-600 underline hidden ml-auto">Eliminar</button>
+        </div>
+      </div>
+
+      <div id="lista-acabados" class="space-y-2"></div>
+      <p id="lista-acabados-vacia" class="text-center text-slate-400 text-sm py-8 hidden">Todavía no hay acabados registrados.</p>
     </div>
       </div>
     </div>

@@ -1076,8 +1076,8 @@
       const active = t === tab;
       $(`panel-${t}`).classList.toggle("hidden", !active);
       $(`tab-${t}-btn`).className =
-        "tab-btn shrink-0 rounded-lg py-2 px-4 text-sm font-medium " +
-        (active ? "bg-brand text-white" : "bg-white border border-slate-300 text-slate-600");
+        "tab-btn block w-full text-left py-2.5 px-4 text-sm font-medium " +
+        (active ? "bg-brand text-white" : "bg-white text-slate-600");
     });
     // Lo de arriba acaba de reescribir el className de TODOS los botones de
     // pestaña (le quita cualquier "hidden" que tuvieran) — hay que volver a
@@ -1091,7 +1091,23 @@
     // El botón "+" flotante solo aplica a la lista de gastos; documentos y
     // bitácora tienen su propio botón "+" arriba de su lista.
     $("fab-add").classList.toggle("hidden", tab !== "gastos");
+    // El menú de pestañas ahora es un listado desplegable (no una barra de
+    // botones): el texto del botón que lo abre muestra el nombre de la
+    // pestaña activa, y elegir una pestaña cierra el listado.
+    $("tabs-menu-toggle-label").textContent = $(`tab-${tab}-btn`).textContent;
+    $("tabs-menu-list").classList.add("hidden");
   }
+
+  $("tabs-menu-toggle").addEventListener("click", () => {
+    $("tabs-menu-list").classList.toggle("hidden");
+  });
+  // Cierra el listado si se toca fuera de él (pero no al tocar el propio
+  // botón que lo abre, para no abrir y cerrar en el mismo click).
+  document.addEventListener("click", (e) => {
+    if ($("tabs-menu-list").classList.contains("hidden")) return;
+    if ($("tabs-bar").contains(e.target)) return;
+    $("tabs-menu-list").classList.add("hidden");
+  });
 
   // -------------------- PERMISOS (qué pantallas puede ver cada integrante) --------------------
   // Las 11 secciones que Santiago puede prender/apagar por persona: las 8

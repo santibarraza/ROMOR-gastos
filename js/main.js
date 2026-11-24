@@ -60,6 +60,8 @@
     // `proyectos:{nombre}` (null si es un riesgo general).
     riesgos: [],
     editingRiesgoId: null,
+    acabados: [],
+    editingAcabadoId: null,
     riesgosMostrarCerrados: false,
     // true solo si se entró con la cuenta EXCLUSIVA de Santiago
     // (ADMIN_LOGIN_EMAIL en config.js), nunca con la contraseña compartida
@@ -452,10 +454,11 @@
         const nPresupuestos = state.presupuestos.filter((p) => p.proyecto_id === id).length;
         const nPlanAccion = state.planAccion.filter((p) => p.proyecto_id === id).length;
         const nRiesgos = state.riesgos.filter((r) => r.proyecto_id === id).length;
+        const nAcabados = state.acabados.filter((a) => a.proyecto_id === id).length;
         const detalle =
-          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios || nPresupuestos || nPlanAccion || nRiesgos
-            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora, ${nRecordatorios} recordatorio(s), ${nPresupuestos} presupuesto(s) de partida, ${nPlanAccion} pendiente(s) del plan de acción y ${nRiesgos} riesgo(s) de este proyecto.`
-            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora, recordatorios, presupuestos, pendientes ni riesgos registrados.";
+          nGastos || nEntradas || nDocumentos || nBitacora || nRecordatorios || nPresupuestos || nPlanAccion || nRiesgos || nAcabados
+            ? ` Esto borra PERMANENTEMENTE ${nGastos} gasto(s), ${nEntradas} entrada(s), ${nDocumentos} documento(s), ${nBitacora} avance(s) de bitácora, ${nRecordatorios} recordatorio(s), ${nPresupuestos} presupuesto(s) de partida, ${nPlanAccion} pendiente(s) del plan de acción, ${nRiesgos} riesgo(s) y ${nAcabados} acabado(s) de este proyecto.`
+            : " Este proyecto no tiene gastos, entradas, documentos, avances de bitácora, recordatorios, presupuestos, pendientes, riesgos ni acabados registrados.";
         if (!confirm(`¿Eliminar el proyecto "${nombre}"?${detalle} Esta acción no se puede deshacer.`)) return;
         try {
           await DATA.deleteProyecto(id);
@@ -468,10 +471,12 @@
           state.presupuestos = state.presupuestos.filter((p) => p.proyecto_id !== id);
           state.planAccion = state.planAccion.filter((p) => p.proyecto_id !== id);
           state.riesgos = state.riesgos.filter((r) => r.proyecto_id !== id);
+          state.acabados = state.acabados.filter((a) => a.proyecto_id !== id);
           renderRecordatoriosCard();
           renderPresupuesto();
           renderPlanAccion();
           renderRiesgos();
+          renderAcabados();
           if (state.filtroProyecto === id) state.filtroProyecto = "";
           if (state.currentProject?.id === id) {
             state.currentProject = null;
@@ -924,7 +929,7 @@
       // Traemos TODOS los gastos/entradas/documentos/bitácora (de todos los
       // proyectos) y filtramos en el cliente — así la vista general y el
       // filtro por proyecto no requieren volver a pedir datos al servidor.
-      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos, planAccion, riesgos, permisos] =
+      const [gastos, entradas, documentos, bitacora, recordatorios, presupuestos, planAccion, riesgos, acabados, permisos] =
         await Promise.all([
           DATA.getGastos(),
           DATA.getEntradas(),
@@ -934,6 +939,7 @@
           DATA.getPresupuestos(),
           DATA.getPlanAccion(),
           DATA.getRiesgos(),
+          DATA.getAcabados(),
           DATA.getPermisos(),
         ]);
       state.gastos = gastos;
@@ -944,6 +950,7 @@
       state.presupuestos = presupuestos;
       state.planAccion = planAccion;
       state.riesgos = riesgos;
+      state.acabados = acabados;
       state.permisos = permisos;
     } catch (err) {
       toast("Error cargando datos: " + err.message, true);
@@ -961,6 +968,7 @@
     renderPresupuesto();
     renderPlanAccion();
     renderRiesgos();
+    renderAcabados();
     aplicarPermisosUI();
   }
 
@@ -988,6 +996,7 @@
     renderPresupuesto();
     renderPlanAccion();
     renderRiesgos();
+    renderAcabados();
   });
 
   function gastosFiltrados() {
@@ -1051,7 +1060,7 @@
   }
 
   // -------------------- TABS GASTOS / ENTRADAS / DOCUMENTOS / BITÁCORA --------------------
-  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos", "presupuesto", "plan", "riesgos"];
+  const TABS = ["bitacora", "gastos", "entradas", "documentos", "creditos", "presupuesto", "plan", "riesgos", "acabados"];
   $("tab-gastos-btn").addEventListener("click", () => switchTab("gastos"));
   $("tab-entradas-btn").addEventListener("click", () => switchTab("entradas"));
   $("tab-documentos-btn").addEventListener("click", () => switchTab("documentos"));
@@ -1060,6 +1069,7 @@
   $("tab-presupuesto-btn").addEventListener("click", () => switchTab("presupuesto"));
   $("tab-plan-btn").addEventListener("click", () => switchTab("plan"));
   $("tab-riesgos-btn").addEventListener("click", () => switchTab("riesgos"));
+  $("tab-acabados-btn").addEventListener("click", () => switchTab("acabados"));
 
   function switchTab(tab) {
     TABS.forEach((t) => {
@@ -1098,6 +1108,7 @@
     { key: "presupuesto", label: "Presupuesto" },
     { key: "plan", label: "Plan de acción" },
     { key: "riesgos", label: "Riesgos" },
+    { key: "acabados", label: "Acabados" },
     { key: "proyectos", label: "Proyectos" },
     { key: "recordatorios", label: "Recordatorios" },
     { key: "proveedores", label: "Proveedores" },
@@ -2764,6 +2775,17 @@
   });
 
   function renderRiesgos() {
+    // Mantiene la mini-forma coherente si, por ejemplo, se agregaron
+    // proyectos/integrantes desde otra pestaña — mismo criterio ya usado en
+    // renderPresupuesto(). Corrige además un hueco real: sin esto, los
+    // selects de "proyecto"/"responsable" quedaban vacíos (sin <option>)
+    // hasta el primer edit/cancelar/guardar, así que un riesgo nuevo podía
+    // guardarse como "general" por accidente, sin que nadie lo notara.
+    if (!state.editingRiesgoId) {
+      $("riesgo-proyecto").innerHTML = riesgoProyectoOptions();
+      $("riesgo-proyecto").value = state.filtroProyecto || "";
+      $("riesgo-responsable").innerHTML = planResponsableOptions();
+    }
     const rows = riesgosFiltrados();
     const mostrarTodos = !state.filtroProyecto;
     const cont = $("lista-riesgos");
@@ -2771,6 +2793,215 @@
     cont.innerHTML = rows.map((r) => riesgoRowHtml(r, { conProyecto: mostrarTodos })).join("");
     cont.querySelectorAll(".riesgo-abrir").forEach((el) => {
       el.addEventListener("click", () => openRiesgoForEdit(el.dataset.id));
+    });
+  }
+
+  // -------------------- ACABADOS (pinturas, pisos, etc. por proyecto) --------------------
+  const ACABADO_CATEGORIA_LABEL = {
+    pintura: "🎨 Pintura",
+    piso: "🧱 Piso",
+    azulejo: "◻️ Azulejo",
+    herreria: "🔩 Herrería",
+    carpinteria: "🪵 Carpintería",
+    canceleria: "🚪 Cancelería",
+    otro: "✨ Otro",
+  };
+
+  function acabadoCategoriaTexto(a) {
+    if (a.categoria === "otro" && a.categoria_otro) return `✨ ${a.categoria_otro}`;
+    return ACABADO_CATEGORIA_LABEL[a.categoria] || a.categoria;
+  }
+
+  function acabadosFiltrados() {
+    // A diferencia de Riesgos/Recordatorios, un acabado SIEMPRE pertenece a
+    // un proyecto (no existe "acabado general"), así que el filtro es
+    // simplemente por proyecto_id, sin caso especial para null.
+    return state.filtroProyecto
+      ? state.acabados.filter((a) => a.proyecto_id === state.filtroProyecto)
+      : state.acabados;
+  }
+
+  function acabadoRowHtml(a, { conProyecto }) {
+    const proyectoTag = conProyecto && a.proyectos?.nombre
+      ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5">${esc(a.proyectos.nombre)}</span>`
+      : "";
+    const categoriaTag = `<span class="inline-block text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5">${esc(acabadoCategoriaTexto(a))}</span>`;
+    const marcaTag = a.marca_color
+      ? `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">${esc(a.marca_color)}</span>`
+      : "";
+    const proveedorTag = a.proveedor
+      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">🏬 ${esc(a.proveedor)}</span>`
+      : "";
+    const notasHtml = a.notas
+      ? `<p class="text-xs text-slate-500 mt-1">${esc(a.notas)}</p>`
+      : "";
+    return `
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3" data-acabado-id="${a.id}">
+        <button type="button" class="acabado-abrir w-full text-left" data-id="${a.id}">
+          <p class="text-sm text-slate-800 font-medium break-words">${esc(a.zona)}</p>
+          <div class="flex flex-wrap gap-1 mt-1.5">
+            ${proyectoTag}${categoriaTag}${marcaTag}${proveedorTag}
+          </div>
+          ${notasHtml}
+        </button>
+      </div>`;
+  }
+
+  function acabadoProyectoOptions() {
+    // Sin opción "general": un acabado siempre pertenece a un proyecto.
+    return state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
+  }
+
+  function actualizarAcabadoCategoriaOtro() {
+    const esOtro = $("acabado-categoria").value === "otro";
+    $("acabado-categoria-otro").classList.toggle("hidden", !esOtro);
+  }
+  $("acabado-categoria").addEventListener("change", actualizarAcabadoCategoriaOtro);
+
+  function resetAcabadoForm() {
+    state.editingAcabadoId = null;
+    $("acabado-form-title").textContent = "Agregar acabado";
+    $("acabado-id").value = "";
+    $("acabado-error").classList.add("hidden");
+    $("acabado-proyecto").disabled = false;
+    $("acabado-proyecto").innerHTML = acabadoProyectoOptions();
+    $("acabado-proyecto").value = state.filtroProyecto || state.proyectos[0]?.id || "";
+    $("acabado-zona").value = "";
+    $("acabado-categoria").value = "pintura";
+    $("acabado-categoria-otro").value = "";
+    actualizarAcabadoCategoriaOtro();
+    $("acabado-marca-color").value = "";
+    $("acabado-proveedor").value = "";
+    $("acabado-notas").value = "";
+    $("acabado-guardar-btn").textContent = "Agregar";
+    $("acabado-cancelar-btn").classList.add("hidden");
+    $("acabado-eliminar-btn").classList.add("hidden");
+  }
+
+  function openAcabadoForEdit(id) {
+    const a = state.acabados.find((x) => x.id === id);
+    if (!a) return;
+    state.editingAcabadoId = id;
+    $("acabado-form-title").textContent = "Editar acabado";
+    $("acabado-id").value = a.id;
+    $("acabado-error").classList.add("hidden");
+    $("acabado-proyecto").innerHTML = acabadoProyectoOptions();
+    $("acabado-proyecto").value = a.proyecto_id || "";
+    $("acabado-proyecto").disabled = true; // el proyecto no se cambia al editar, se borra y se vuelve a agregar si hace falta
+    $("acabado-zona").value = a.zona || "";
+    $("acabado-categoria").value = a.categoria || "otro";
+    $("acabado-categoria-otro").value = a.categoria_otro || "";
+    actualizarAcabadoCategoriaOtro();
+    $("acabado-marca-color").value = a.marca_color || "";
+    $("acabado-proveedor").value = a.proveedor || "";
+    $("acabado-notas").value = a.notas || "";
+    $("acabado-guardar-btn").textContent = "Guardar cambios";
+    $("acabado-cancelar-btn").classList.remove("hidden");
+    $("acabado-eliminar-btn").classList.remove("hidden");
+    $("acabado-zona").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  $("acabado-cancelar-btn").addEventListener("click", () => resetAcabadoForm());
+
+  $("acabado-guardar-btn").addEventListener("click", async () => {
+    const errEl = $("acabado-error");
+    errEl.classList.add("hidden");
+    const proyectoId = $("acabado-proyecto").value;
+    const zona = $("acabado-zona").value.trim();
+    const categoria = $("acabado-categoria").value;
+    const categoriaOtro = $("acabado-categoria-otro").value.trim();
+    if (!proyectoId) {
+      errEl.textContent = "Elige un proyecto.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    if (!zona) {
+      errEl.textContent = "Escribe la zona.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    if (categoria === "otro" && !categoriaOtro) {
+      errEl.textContent = "Escribe de qué tipo de acabado se trata.";
+      errEl.classList.remove("hidden");
+      return;
+    }
+    const btn = $("acabado-guardar-btn");
+    btn.disabled = true;
+    try {
+      const payload = {
+        proyecto_id: proyectoId,
+        zona,
+        categoria,
+        categoria_otro: categoria === "otro" ? categoriaOtro : null,
+        marca_color: $("acabado-marca-color").value.trim() || null,
+        proveedor: $("acabado-proveedor").value.trim() || null,
+        notas: $("acabado-notas").value.trim() || null,
+      };
+      const id = state.editingAcabadoId;
+      if (id) {
+        const actualizado = await DATA.saveAcabado(payload, id);
+        const idx = state.acabados.findIndex((a) => a.id === id);
+        if (idx >= 0) state.acabados[idx] = { ...state.acabados[idx], ...actualizado };
+        toast("Acabado actualizado");
+      } else {
+        payload.creado_por = state.currentUser;
+        const nuevo = await DATA.saveAcabado(payload, null);
+        const proyecto = state.proyectos.find((p) => p.id === payload.proyecto_id);
+        state.acabados.unshift({ ...nuevo, proyectos: proyecto ? { nombre: proyecto.nombre } : null });
+        toast("Acabado agregado");
+      }
+      resetAcabadoForm();
+      renderAcabados();
+    } catch (err) {
+      if (err.code === "PGRST116") {
+        try {
+          state.acabados = await DATA.getAcabados();
+        } catch (_) {}
+        resetAcabadoForm();
+        renderAcabados();
+        toast(
+          "No se pudo guardar: ese acabado ya no existe (puede que se haya borrado desde otro dispositivo). Se actualizó la lista.",
+          true
+        );
+      } else {
+        errEl.textContent = "No se pudo guardar: " + err.message;
+        errEl.classList.remove("hidden");
+      }
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("acabado-eliminar-btn").addEventListener("click", async () => {
+    const id = state.editingAcabadoId;
+    if (!id) return;
+    if (!confirm("¿Eliminar este acabado? Esta acción no se puede deshacer.")) return;
+    try {
+      await DATA.deleteAcabado(id);
+      state.acabados = state.acabados.filter((a) => a.id !== id);
+      resetAcabadoForm();
+      toast("Acabado eliminado");
+      renderAcabados();
+    } catch (err) {
+      toast("Error al eliminar: " + err.message, true);
+    }
+  });
+
+  function renderAcabados() {
+    // Mismo criterio que renderPresupuesto()/renderRiesgos(): mantiene el
+    // select de proyecto poblado y coherente sin tener que abrir/cancelar
+    // el formulario primero.
+    if (!state.editingAcabadoId) {
+      $("acabado-proyecto").innerHTML = acabadoProyectoOptions();
+      $("acabado-proyecto").value = state.filtroProyecto || state.proyectos[0]?.id || "";
+    }
+    const rows = acabadosFiltrados();
+    const mostrarTodos = !state.filtroProyecto;
+    const cont = $("lista-acabados");
+    $("lista-acabados-vacia").classList.toggle("hidden", rows.length > 0);
+    cont.innerHTML = rows.map((a) => acabadoRowHtml(a, { conProyecto: mostrarTodos })).join("");
+    cont.querySelectorAll(".acabado-abrir").forEach((el) => {
+      el.addEventListener("click", () => openAcabadoForEdit(el.dataset.id));
     });
   }
 

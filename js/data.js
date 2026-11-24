@@ -437,6 +437,33 @@ window.DATA = (function () {
     if (error) throw error;
   }
 
+  // -------------------- ACABADOS (pinturas, pisos, etc. por proyecto) --------------------
+  async function getAcabados() {
+    const { data, error } = await sb
+      .from("acabados")
+      .select("*, proyectos(nombre)")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return data;
+  }
+
+  async function saveAcabado(acabado, id) {
+    if (id) {
+      const { data, error } = await sb.from("acabados").update(acabado).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    } else {
+      const { data, error } = await sb.from("acabados").insert(acabado).select().single();
+      if (error) throw error;
+      return data;
+    }
+  }
+
+  async function deleteAcabado(id) {
+    const { error } = await sb.from("acabados").delete().eq("id", id);
+    if (error) throw error;
+  }
+
   // -------------------- PERMISOS (qué pantallas puede ver cada integrante) --------------------
   async function getPermisos() {
     const { data, error } = await sb.from("permisos_pantalla").select("*");
@@ -509,6 +536,9 @@ window.DATA = (function () {
     getRiesgos,
     saveRiesgo,
     deleteRiesgo,
+    getAcabados,
+    saveAcabado,
+    deleteAcabado,
     getPermisos,
     addPermiso,
     removePermiso,

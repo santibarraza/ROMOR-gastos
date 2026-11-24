@@ -2,7 +2,7 @@
   "name": "romor-gastos",
   "private": true,
   "engines": {
-    "node": "20.x"
+    "node": "26.x"
   },
   "dependencies": {
     "twilio": "^6.0.0"

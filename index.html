@@ -203,6 +203,73 @@
   </main>
 </div>
 
+<!-- ===================== PRESUPUESTO — VISTA PARA EL CLIENTE ===================== -->
+<!-- Pantalla limpia y aparte (sin pestañas ni otros botones) pensada para
+     enseñarle al cliente desde el celular o tablet: presupuesto total,
+     pagado, restante por pagar, desglose por partida con avance de obra
+     y el historial de sus pagos — NUNCA los gastos reales de la obra. -->
+<div id="view-presupuesto-cliente" class="view">
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+      <button id="presupuesto-cliente-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <h1 id="presupuesto-cliente-titulo" class="text-lg font-bold text-slate-900">Presupuesto</h1>
+    </div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-6 pb-24">
+    <div class="mb-6">
+      <div class="flex justify-between items-baseline mb-1.5">
+        <span class="text-sm font-medium text-slate-600">Avance general de la obra</span>
+        <span id="pc-avance-general-texto" class="text-sm font-semibold text-slate-800">—</span>
+      </div>
+      <div class="w-full bg-slate-100 rounded-full h-2.5">
+        <div id="pc-avance-general-barra" class="h-2.5 rounded-full bg-indigo-500" style="width:0%"></div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 text-center">
+        <p class="text-xs text-slate-500 mb-1">Presupuesto total</p>
+        <p id="pc-total-presupuesto" class="text-2xl font-display tracking-wide text-slate-900">$0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 text-center">
+        <p class="text-xs text-slate-500 mb-1">Pagado</p>
+        <p id="pc-total-pagado" class="text-2xl font-display tracking-wide text-emerald-600">$0</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 text-center">
+        <p class="text-xs text-slate-500 mb-1">Restante por pagar</p>
+        <p id="pc-total-restante" class="text-2xl font-display tracking-wide">$0</p>
+      </div>
+    </div>
+
+    <h2 class="text-sm font-semibold text-slate-700 mb-2">Desglose por partida</h2>
+    <div id="pc-tabla-wrap" class="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white mb-2 hidden">
+      <table class="w-full text-sm border-collapse">
+        <thead>
+          <tr class="bg-slate-50 border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
+            <th class="px-3 py-2 font-medium">Partida</th>
+            <th class="px-3 py-2 font-medium text-right">Presupuestado</th>
+            <th class="px-3 py-2 font-medium w-32">Avance de obra</th>
+          </tr>
+        </thead>
+        <tbody id="pc-lista-partidas"></tbody>
+        <tfoot>
+          <tr class="border-t-2 border-slate-300 bg-slate-50 font-semibold text-slate-900">
+            <td class="px-3 py-2">Total</td>
+            <td id="pc-tfoot-presupuesto" class="px-3 py-2 text-right whitespace-nowrap">$0</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <p id="pc-partidas-vacio" class="text-center text-slate-400 text-sm py-6 hidden">Todavía no se ha capturado el presupuesto por partida.</p>
+
+    <h2 class="text-sm font-semibold text-slate-700 mt-6 mb-2">Historial de pagos</h2>
+    <div id="pc-pagos-wrap" class="space-y-2 mb-2 hidden"></div>
+    <p id="pc-pagos-vacio" class="text-center text-slate-400 text-sm py-6 hidden">Todavía no se ha registrado ningún pago.</p>
+  </main>
+</div>
+
 <!-- ===================== DASHBOARD ===================== -->
 <div id="view-dashboard" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
@@ -444,6 +511,12 @@
       <p id="presupuesto-elige-proyecto" class="text-center text-slate-400 text-sm py-8 hidden">Elige un proyecto arriba (en el filtro) para ver y administrar su presupuesto — Presupuesto no se muestra combinado en "Todos los proyectos".</p>
 
       <div id="presupuesto-contenido">
+      <div class="flex justify-end mb-3">
+        <button type="button" id="presupuesto-presentar-btn"
+          class="flex items-center gap-1.5 rounded-lg py-2 px-3 text-sm font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-50">
+          📱 Vista para el cliente
+        </button>
+      </div>
       <div class="grid grid-cols-3 gap-2 mb-4">
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
           <p class="text-[11px] text-slate-500">Presupuestado</p>

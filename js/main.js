@@ -2105,6 +2105,94 @@
     }
   });
 
+  // -------------------- PRESUPUESTO: VISTA PARA EL CLIENTE --------------------
+  // Pantalla aparte (no un toggle dentro de la pestaña) pensada para que
+  // Santiago le enseñe el celular/tablet al cliente: presupuesto total,
+  // pagado (suma de entradas) y restante por pagar — NUNCA lo que
+  // realmente costó cada partida (eso es `gastos`, que esta pantalla no
+  // toca en ningún momento). También incluye el desglose por partida
+  // (monto + % de avance de obra, igual que ya se ve internamente, sin la
+  // columna de "Acciones") y el historial de pagos del cliente.
+  $("presupuesto-presentar-btn").addEventListener("click", () => {
+    renderPresupuestoCliente();
+    showView("presupuesto-cliente");
+  });
+  $("presupuesto-cliente-back-btn").addEventListener("click", () => showView("dashboard"));
+
+  function renderPresupuestoCliente() {
+    const proyectoId = state.filtroProyecto;
+    const proyecto = state.proyectos.find((p) => p.id === proyectoId);
+    $("presupuesto-cliente-titulo").textContent = proyecto ? `Presupuesto · ${proyecto.nombre}` : "Presupuesto";
+
+    const ordenCategoria = (categoriaId) => state.categorias.find((c) => c.id === categoriaId)?.orden ?? 999;
+    const partidas = state.presupuestos
+      .filter((p) => p.proyecto_id === proyectoId)
+      .sort((a, b) => ordenCategoria(a.categoria_id) - ordenCategoria(b.categoria_id));
+    const pagos = state.entradas
+      .filter((e) => e.proyecto_id === proyectoId)
+      .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0));
+
+    const totalPresupuesto = partidas.reduce((s, r) => s + Number(r.monto), 0);
+    const totalPagado = pagos.reduce((s, e) => s + Number(e.monto), 0);
+    const totalRestante = totalPresupuesto - totalPagado;
+
+    $("pc-total-presupuesto").textContent = fmt(totalPresupuesto);
+    $("pc-total-pagado").textContent = fmt(totalPagado);
+    const restanteEl = $("pc-total-restante");
+    // Si el cliente ya cubrió el total (o más), se muestra $0 en vez de un
+    // número negativo, para no dar a entender que se le debe dinero a él.
+    restanteEl.textContent = fmt(Math.max(totalRestante, 0));
+    restanteEl.style.color = totalRestante > 0.005 ? "#d03b3b" : "#0ca30c";
+
+    // Avance general = promedio simple del % de avance de obra entre las
+    // partidas que sí tienen un valor capturado (las que no, no cuentan ni
+    // a favor ni en contra, en vez de tratarlas como 0%).
+    const conAvance = partidas.filter((r) => r.avance_obra !== null && r.avance_obra !== undefined);
+    const avanceGeneral = conAvance.length
+      ? conAvance.reduce((s, r) => s + Number(r.avance_obra), 0) / conAvance.length
+      : null;
+    $("pc-avance-general-texto").textContent = avanceGeneral === null ? "Sin capturar todavía" : `${avanceGeneral.toFixed(0)}%`;
+    $("pc-avance-general-barra").style.width = `${avanceGeneral === null ? 0 : Math.min(100, avanceGeneral)}%`;
+
+    $("pc-tfoot-presupuesto").textContent = fmt(totalPresupuesto);
+    $("pc-tabla-wrap").classList.toggle("hidden", partidas.length === 0);
+    $("pc-partidas-vacio").classList.toggle("hidden", partidas.length > 0);
+    $("pc-lista-partidas").innerHTML = partidas
+      .map((r) => {
+        const avanceObra = r.avance_obra === null || r.avance_obra === undefined ? null : Number(r.avance_obra);
+        const avanceObraCelda =
+          avanceObra === null
+            ? '<span class="text-[11px] text-slate-400">sin capturar</span>'
+            : `
+            <div class="w-full bg-slate-100 rounded-full h-1.5 mb-1">
+              <div class="h-1.5 rounded-full bg-indigo-500" style="width:${Math.min(100, avanceObra)}%"></div>
+            </div>
+            <span class="text-[11px] text-slate-500">${avanceObra.toFixed(0)}%</span>`;
+        return `
+        <tr class="border-b border-slate-100 last:border-0">
+          <td class="px-3 py-2 font-medium text-slate-900">${esc(r.categorias?.nombre || "")}</td>
+          <td class="px-3 py-2 text-right text-slate-700 whitespace-nowrap">${fmt(Number(r.monto))}</td>
+          <td class="px-3 py-2">${avanceObraCelda}</td>
+        </tr>`;
+      })
+      .join("");
+
+    $("pc-pagos-wrap").classList.toggle("hidden", pagos.length === 0);
+    $("pc-pagos-vacio").classList.toggle("hidden", pagos.length > 0);
+    $("pc-pagos-wrap").innerHTML = pagos
+      .map(
+        (e) => `
+      <div class="bg-white rounded-lg border border-slate-200 shadow-sm p-3 flex justify-between items-center gap-2">
+        <div class="min-w-0">
+          <p class="font-medium text-slate-900 truncate">${esc(e.concepto || "Pago")}</p>
+          <p class="text-xs text-slate-400">${fmtFecha(e.fecha)}</p>
+        </div>
+        <p class="font-semibold shrink-0" style="color:#0ca30c">${fmt(e.monto)}</p>
+      </div>`
+      )
+      .join("");
+  }
+
   // -------------------- PLAN DE ACCIÓN (pendientes por proyecto) --------------------
   // Tareas/pendientes de un proyecto con fecha, ubicación, costo/cotización
   // y responsable asignado — pensado para mandarle a los trabajadores el

@@ -2,6 +2,13 @@
 // Lógica principal de la app (vistas, eventos, render)
 // =============================================================
 (function () {
+  // Iconos SVG en línea reutilizables, en vez de emoji, para mantener un
+  // look consistente y profesional en toda la app (rediseño nov 2026).
+  const ICON_TRASH =
+    '<svg class="inline-block align-middle" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6h16z"/></svg>';
+  const ICON_EDIT =
+    '<svg class="inline-block align-middle" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+
   const state = {
     categorias: [],
     proveedores: [],
@@ -160,12 +167,13 @@
   function updateOfflineBanner() {
     const banner = $("offline-banner");
     if (!banner) return;
+    const bannerText = $("offline-banner-text");
     const pendientes = getOutbox().length;
     if (!navigator.onLine) {
-      banner.textContent = "📡 Sin conexión — lo que agregues se guardará y se subirá cuando vuelva el internet.";
+      if (bannerText) bannerText.textContent = "Sin conexión — lo que agregues se guardará y se subirá cuando vuelva el internet.";
       banner.classList.remove("hidden");
     } else if (pendientes > 0) {
-      banner.textContent = `📡 Sincronizando ${pendientes} registro(s) pendiente(s)...`;
+      if (bannerText) bannerText.textContent = `Sincronizando ${pendientes} registro(s) pendiente(s)...`;
       banner.classList.remove("hidden");
     } else {
       banner.classList.add("hidden");
@@ -433,7 +441,7 @@
         <button data-id="${p.id}" class="proyecto-select-btn flex-1 min-w-0 text-left flex items-center gap-2">
           <span class="font-medium text-slate-800 truncate">${esc(p.nombre)}</span>
         </button>
-        <button data-id="${p.id}" data-nombre="${esc(p.nombre)}" class="proyecto-delete-btn shrink-0 text-slate-400 hover:text-red-600 text-lg px-1 leading-none" title="Eliminar proyecto">🗑️</button>
+        <button data-id="${p.id}" data-nombre="${esc(p.nombre)}" class="proyecto-delete-btn shrink-0 text-slate-400 hover:text-red-600 px-1 leading-none" title="Eliminar proyecto">${ICON_TRASH}</button>
         <span class="text-slate-400 ml-1">→</span>
       </div>`
       )
@@ -580,7 +588,7 @@
         </div>
         ${
           tel
-            ? `<a href="https://wa.me/${esc(tel)}" target="_blank" rel="noopener" class="mt-2 inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 rounded-full px-2.5 py-1">💬 WhatsApp</a>`
+            ? `<a href="https://wa.me/${esc(tel)}" target="_blank" rel="noopener" class="mt-2 inline-flex items-center gap-1.5 text-xs text-green-700 bg-green-50 rounded-full px-2.5 py-1"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" class="flex-shrink-0"><path d="M12 2a10 10 0 00-8.5 15.2L2 22l4.9-1.5A10 10 0 1012 2zm0 18a8 8 0 01-4.1-1.1l-.3-.2-3 .9.9-2.9-.2-.3A8 8 0 1112 20zm4.4-5.9c-.2-.1-1.4-.7-1.6-.8-.2-.1-.4-.1-.5.1-.2.2-.6.8-.8 1-.1.2-.3.2-.5.1-1.3-.7-2.2-1.2-3.1-2.7-.2-.4.2-.4.6-1.2.1-.1 0-.3 0-.4-.1-.1-.5-1.3-.7-1.7-.2-.4-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3-.2.2-.8.8-.8 1.9s.8 2.2.9 2.3c.1.2 1.6 2.4 3.8 3.4 1.4.6 2 .6 2.6.5.4-.1 1.4-.6 1.6-1.1.2-.5.2-1 .1-1.1-.1-.1-.2-.2-.5-.3z"/></svg>WhatsApp</a>`
             : ""
         }
       </div>`;
@@ -979,7 +987,7 @@
     const sel = $("filtro-proyecto");
     const current = state.filtroProyecto || "";
     sel.innerHTML =
-      '<option value="">🌐 Todos los proyectos</option>' +
+      '<option value="">Todos los proyectos</option>' +
       state.proyectos.map((p) => `<option value="${p.id}">${esc(p.nombre)}</option>`).join("");
     sel.value = current;
   }
@@ -1313,7 +1321,7 @@
             <span class="font-medium text-slate-900">${fmt(monto)}</span>
           </div>
           <div class="w-full bg-slate-100 rounded-full h-1.5">
-            <div class="h-1.5 rounded-full" style="width:${(monto / max) * 100}%;background:#DB002E"></div>
+            <div class="h-1.5 rounded-full" style="width:${(monto / max) * 100}%;background:#3B5BDB"></div>
           </div>
         </div>`
         )
@@ -1353,13 +1361,13 @@
         const label = `${MESES_ABBR[parseInt(mm, 10) - 1]} ${yy.slice(2)}`;
         return `<g>
         <title>${esc(label)}: ${fmt(porMes[m])}</title>
-        <rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="4" fill="#DB002E"></rect>
-        <text x="${x + barW / 2}" y="${H - 6}" text-anchor="middle" font-size="9" fill="#898781">${esc(label)}</text>
+        <rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="4" fill="#3B5BDB"></rect>
+        <text x="${x + barW / 2}" y="${H - 6}" text-anchor="middle" font-size="9" fill="#8A93A3">${esc(label)}</text>
       </g>`;
       })
       .join("");
     cont.innerHTML = `<svg viewBox="0 0 ${totalW} ${H}" style="max-height:140px;width:100%" preserveAspectRatio="xMinYMid meet">
-      <line x1="0" y1="${H - 20}" x2="${totalW}" y2="${H - 20}" stroke="#c3c2b7" stroke-width="1"></line>
+      <line x1="0" y1="${H - 20}" x2="${totalW}" y2="${H - 20}" stroke="#E2E6EC" stroke-width="1"></line>
       ${bars}
     </svg>`;
   }
@@ -1379,7 +1387,7 @@
             ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(g.proyectos.nombre)}</span>`
             : "";
         const pendienteTag = g._pendiente
-          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
+          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">Sin subir</span>'
           : "";
         let creditoTag = "";
         if (g.metodo_pago === "Crédito" || g.fuente_fondos === "credito") {
@@ -1387,8 +1395,8 @@
           const saldo = Number(g.monto) - abonado;
           creditoTag =
             saldo > 0.005
-              ? `<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 ${fmt(saldo)}</span>`
-              : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">💳 pagado</span>';
+              ? `<span class="inline-block text-[10px] font-medium text-red-700 bg-red-50 rounded px-1.5 py-0.5 mr-1 align-middle">${fmt(saldo)} pendiente</span>`
+              : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">Pagado</span>';
         }
         let prestamoTag = "";
         if (g.fuente_fondos === "prestamo") {
@@ -1397,8 +1405,8 @@
           const nombrePrestamista = g.proyecto_prestamista?.nombre || "otro proyecto";
           prestamoTag =
             saldo > 0.005
-              ? `<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle" title="Dinero prestado de ${esc(nombrePrestamista)}">🔁 ${fmt(saldo)}</span>`
-              : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">🔁 regresado</span>';
+              ? `<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle" title="Dinero prestado de ${esc(nombrePrestamista)}">${fmt(saldo)} prestado</span>`
+              : '<span class="inline-block text-[10px] font-medium text-green-700 bg-green-50 rounded px-1.5 py-0.5 mr-1 align-middle">Regresado</span>';
         }
         const ivaTag = gastoImpuestosBadge(g);
         return `
@@ -1413,8 +1421,8 @@
               <p class="font-semibold text-slate-900">${fmt(g.monto)}</p>
               ${(() => {
                 const n = (g.gasto_documentos || []).length;
-                if (n > 0) return `<span class="text-xs text-slate-400">📎 ${n} documento${n > 1 ? "s" : ""}</span>`;
-                return g.comprobante_url ? '<span class="text-xs text-slate-400">📎 comprobante</span>' : "";
+                if (n > 0) return `<span class="text-xs text-slate-400">${n} documento${n > 1 ? "s" : ""}</span>`;
+                return g.comprobante_url ? '<span class="text-xs text-slate-400">Comprobante</span>' : "";
               })()}
             </div>
           </div>
@@ -1574,7 +1582,7 @@
                   <span>${fmtFecha(a.fecha)}${a.notas ? " · " + esc(a.notas) : ""}</span>
                   <span class="flex items-center gap-2">
                     <span class="font-medium text-slate-800">${fmt(a.monto)}</span>
-                    <button class="abono-delete-btn text-slate-400 hover:text-red-600" data-id="${a.id}">🗑️</button>
+                    <button class="abono-delete-btn text-slate-400 hover:text-red-600" data-id="${a.id}">${ICON_TRASH}</button>
                   </span>
                 </div>`
                       )
@@ -1731,7 +1739,7 @@
                   <span>${fmtFecha(a.fecha)}${a.notas ? " · " + esc(a.notas) : ""}</span>
                   <span class="flex items-center gap-2">
                     <span class="font-medium text-slate-800">${fmt(a.monto)}</span>
-                    <button class="abono-prestamo-delete-btn text-slate-400 hover:text-red-600" data-id="${a.id}">🗑️</button>
+                    <button class="abono-prestamo-delete-btn text-slate-400 hover:text-red-600" data-id="${a.id}">${ICON_TRASH}</button>
                   </span>
                 </div>`
                       )
@@ -2269,14 +2277,14 @@
       ? `<span class="inline-block text-[10px] font-medium text-slate-500 bg-slate-100 rounded px-1.5 py-0.5">✓ ${p.fecha ? fmtFecha(p.fecha) + horaSufijo : "hecho"}</span>`
       : `<span class="inline-block text-[10px] font-medium ${estado.clase} rounded px-1.5 py-0.5">${estado.texto}${p.fecha ? horaSufijo : ""}</span>`;
     const ubicacionTag = p.ubicacion
-      ? `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">📍 ${esc(p.ubicacion)}</span>`
+      ? `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">${esc(p.ubicacion)}</span>`
       : "";
     const costoTag =
       p.costo !== null && p.costo !== undefined
-        ? `<span class="inline-block text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5">💰 ${fmt(p.costo)}</span>`
+        ? `<span class="inline-block text-[10px] font-medium text-emerald-700 bg-emerald-50 rounded px-1.5 py-0.5">${fmt(p.costo)}</span>`
         : "";
     const responsableTag = p.responsable
-      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">👷 ${esc(p.responsable)}</span>`
+      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">${esc(p.responsable)}</span>`
       : "";
     // Dependencia: solo es una advertencia visual (no bloquea marcar hecho).
     // Si la tarea de la que depende ya no existe (se borró desde otro
@@ -2284,12 +2292,12 @@
     const dependeDe = p.depende_de_id ? state.planAccion.find((x) => x.id === p.depende_de_id) : null;
     const dependeTag =
       dependeDe && !dependeDe.hecho
-        ? `<span class="inline-block text-[10px] font-medium text-amber-800 bg-amber-100 rounded px-1.5 py-0.5">⏳ depende de: ${esc(dependeDe.titulo)}</span>`
+        ? `<span class="inline-block text-[10px] font-medium text-amber-800 bg-amber-100 rounded px-1.5 py-0.5">Depende de: ${esc(dependeDe.titulo)}</span>`
         : "";
     const notasHtml = p.notas ? `<p class="text-xs text-slate-500 mt-1">${esc(p.notas)}</p>` : "";
     const hitoBorde = p.es_hito ? " border-l-4 border-l-accent" : "";
     const hitoTag = p.es_hito
-      ? `<span class="inline-block text-[10px] font-medium text-amber-900 bg-amber-50 rounded px-1.5 py-0.5">🏁 Hito</span>`
+      ? `<span class="inline-block text-[10px] font-medium text-amber-900 bg-amber-50 rounded px-1.5 py-0.5">Hito</span>`
       : "";
     return `
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3${hitoBorde}" data-plan-id="${p.id}">
@@ -2338,7 +2346,7 @@
     return (
       '<option value="">— Ninguno —</option>' +
       candidatos
-        .map((p) => `<option value="${p.id}">${p.es_hito ? "🏁 " : ""}${esc(p.titulo)}${p.hecho ? " (hecho)" : ""}</option>`)
+        .map((p) => `<option value="${p.id}">${esc(p.titulo)}${p.es_hito ? " (hito)" : ""}${p.hecho ? " (hecho)" : ""}</option>`)
         .join("")
     );
   }
@@ -2733,7 +2741,7 @@
     const impactoTag = `<span class="inline-block text-[10px] font-medium ${RIESGO_IMPACTO_CLASE[r.impacto] || ""} rounded px-1.5 py-0.5">${RIESGO_IMPACTO_LABEL[r.impacto] || r.impacto}</span>`;
     const estadoTag = `<span class="inline-block text-[10px] font-medium ${RIESGO_ESTADO_CLASE[r.estado] || ""} rounded px-1.5 py-0.5">${RIESGO_ESTADO_LABEL[r.estado] || r.estado}</span>`;
     const responsableTag = r.responsable
-      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">👷 ${esc(r.responsable)}</span>`
+      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">${esc(r.responsable)}</span>`
       : "";
     const mitigacionHtml = r.mitigacion
       ? `<p class="text-xs text-slate-500 mt-1"><span class="font-medium text-slate-600">Mitigación:</span> ${esc(r.mitigacion)}</p>`
@@ -2902,17 +2910,17 @@
 
   // -------------------- ACABADOS (pinturas, pisos, etc. por proyecto) --------------------
   const ACABADO_CATEGORIA_LABEL = {
-    pintura: "🎨 Pintura",
-    piso: "🧱 Piso",
-    azulejo: "◻️ Azulejo",
-    herreria: "🔩 Herrería",
-    carpinteria: "🪵 Carpintería",
-    canceleria: "🚪 Cancelería",
-    otro: "✨ Otro",
+    pintura: "Pintura",
+    piso: "Piso",
+    azulejo: "Azulejo",
+    herreria: "Herrería",
+    carpinteria: "Carpintería",
+    canceleria: "Cancelería",
+    otro: "Otro",
   };
 
   function acabadoCategoriaTexto(a) {
-    if (a.categoria === "otro" && a.categoria_otro) return `✨ ${a.categoria_otro}`;
+    if (a.categoria === "otro" && a.categoria_otro) return a.categoria_otro;
     return ACABADO_CATEGORIA_LABEL[a.categoria] || a.categoria;
   }
 
@@ -2934,7 +2942,7 @@
       ? `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5">${esc(a.marca_color)}</span>`
       : "";
     const proveedorTag = a.proveedor
-      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">🏬 ${esc(a.proveedor)}</span>`
+      ? `<span class="inline-block text-[10px] font-medium text-indigo-700 bg-indigo-50 rounded px-1.5 py-0.5">${esc(a.proveedor)}</span>`
       : "";
     const notasHtml = a.notas
       ? `<p class="text-xs text-slate-500 mt-1">${esc(a.notas)}</p>`
@@ -3122,7 +3130,7 @@
             ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(e.proyectos.nombre)}</span>`
             : "";
         const pendienteTag = e._pendiente
-          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
+          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">Sin subir</span>'
           : "";
         let ivaTag = "";
         if (e.con_iva) {
@@ -3289,10 +3297,10 @@
         return `
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3 flex justify-between items-center gap-2">
           <a href="${esc(d.url)}" target="_blank" rel="noopener" class="min-w-0 flex-1">
-            <p class="font-medium text-slate-900 truncate">${proyectoTag}📄 ${esc(d.nombre)}</p>
+            <p class="font-medium text-slate-900 truncate">${proyectoTag}${esc(d.nombre)}</p>
             <p class="text-xs text-slate-500">${esc(d.tipo || "Documento")}${d.subido_por ? " · subió " + esc(d.subido_por) : ""}</p>
           </a>
-          <button data-id="${d.id}" class="documento-delete-btn shrink-0 text-slate-400 hover:text-red-600 text-lg px-1">🗑️</button>
+          <button data-id="${d.id}" class="documento-delete-btn shrink-0 text-slate-400 hover:text-red-600 px-1">${ICON_TRASH}</button>
         </div>`;
       })
       .join("");
@@ -3374,7 +3382,7 @@
             ? `<span class="inline-block text-[10px] font-medium text-blue-700 bg-blue-50 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(b.proyectos.nombre)}</span>`
             : "";
         const pendienteTag = b._pendiente
-          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">⏳ sin subir</span>'
+          ? '<span class="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 rounded px-1.5 py-0.5 mr-1 align-middle">Sin subir</span>'
           : "";
         const fotos = (b.fotos || [])
           .map(
@@ -3387,8 +3395,8 @@
           <div class="flex justify-between items-start gap-2">
             <p class="text-xs text-slate-400 mb-1">${proyectoTag}${pendienteTag}${fmtFecha(b.fecha)}${b.capturado_por ? " · " + esc(b.capturado_por) : ""}</p>
             <div class="flex items-center gap-1 shrink-0">
-              <button data-id="${esc(b.id)}" class="bitacora-edit-btn text-slate-400 hover:text-slate-700 text-lg px-1 leading-none" title="Editar">✏️</button>
-              <button data-id="${esc(b.id)}" class="bitacora-delete-btn text-slate-400 hover:text-red-600 text-lg px-1 leading-none" title="Eliminar">🗑️</button>
+              <button data-id="${esc(b.id)}" class="bitacora-edit-btn text-slate-400 hover:text-slate-700 px-1 leading-none" title="Editar">${ICON_EDIT}</button>
+              <button data-id="${esc(b.id)}" class="bitacora-delete-btn text-slate-400 hover:text-red-600 px-1 leading-none" title="Eliminar">${ICON_TRASH}</button>
             </div>
           </div>
           ${b.nota ? `<p class="text-sm text-slate-800 mb-2">${esc(b.nota)}</p>` : ""}
@@ -4214,7 +4222,7 @@
     const imps = g.gasto_impuestos || [];
     if (!imps.length) return "";
     const extra = imps.length > 1 ? ` +${imps.length - 1} más` : "";
-    return `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5 mr-1 align-middle">🧾 ${esc(imps[0].nombre)}${extra}</span>`;
+    return `<span class="inline-block text-[10px] font-medium text-slate-600 bg-slate-100 rounded px-1.5 py-0.5 mr-1 align-middle">${esc(imps[0].nombre)}${extra}</span>`;
   }
 
   // Ajusta el % sugerido y muestra/oculta los campos de "Otro" según el
@@ -4280,7 +4288,7 @@
         (imp, i) => `
       <div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5">
         <span class="text-sm text-slate-700 truncate">${esc(imp.nombre)} · ${fmtPct(imp.porcentaje)}% (${imp.es_retencion ? "resta" : "suma"})</span>
-        <button type="button" class="gasto-imp-delete-btn text-red-500 hover:text-red-700 text-sm shrink-0" data-index="${i}">🗑️</button>
+        <button type="button" class="gasto-imp-delete-btn text-red-500 hover:text-red-700 shrink-0" data-index="${i}">${ICON_TRASH}</button>
       </div>`
       )
       .join("");
@@ -4370,7 +4378,7 @@
         (d) => `
       <div class="flex items-center justify-between gap-2 bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5" data-doc-id="${d.id}">
         <a href="${d.url}" target="_blank" class="text-sm text-blue-600 underline truncate">${esc(d.nombre || "Documento")}</a>
-        <button type="button" class="gasto-doc-delete-btn text-red-500 hover:text-red-700 text-sm shrink-0" data-id="${d.id}">🗑️</button>
+        <button type="button" class="gasto-doc-delete-btn text-red-500 hover:text-red-700 shrink-0" data-id="${d.id}">${ICON_TRASH}</button>
       </div>`
       )
       .join("");

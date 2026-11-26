@@ -11,25 +11,27 @@
 <link rel="shortcut icon" href="assets/favicon.ico" />
 <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png" />
 <link rel="manifest" href="manifest.json" />
-<meta name="theme-color" content="#DB002E" />
+<meta name="theme-color" content="#1B2A4A" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Roboto:ital,wght@0,400;0,500;0,700;0,900;1,400&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
-  // Paleta de marca ROMOR, tomada directo del logo:
-  // rojo #DB002E (texto del wordmark) y naranja #FFB000 (el punto).
+  // Paleta profesional de ROMOR (rediseño de nov 2026, a petición de
+  // Santiago): azul marino como color primario + un azul más vivo como
+  // acento para elementos interactivos. Ya no sigue el rojo/naranja del
+  // logo — fue una decisión explícita, no un descuido.
   // IMPORTANTE: este script debe ir DESPUÉS de cargar cdn.tailwindcss.com
   // (arriba) — el objeto global `tailwind` no existe todavía antes de eso.
   tailwind.config = {
     theme: {
       extend: {
         colors: {
-          brand: { DEFAULT: "#DB002E", dark: "#B8001F", 50: "#FDECEE" },
-          accent: { DEFAULT: "#FFB000" },
+          brand: { DEFAULT: "#1B2A4A", dark: "#131F38", 50: "#EEF1F6" },
+          accent: { DEFAULT: "#3B5BDB", dark: "#2C46B0", 50: "#EEF1FC" },
         },
         fontFamily: {
-          display: ['"Bebas Neue"', "sans-serif"],
+          display: ["Inter", "sans-serif"],
         },
       },
     },
@@ -40,11 +42,8 @@
 <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://unpkg.com/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 <style>
-  body { font-family: 'Roboto', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
-  /* Bebas Neue para títulos de pantalla (h1) — es una fuente condensada de
-     solo mayúsculas/versalitas por diseño, así que le damos un poco más de
-     tracking para que respire; Roboto se usa para todo lo demás. */
-  h1 { font-family: 'Bebas Neue', 'Roboto', sans-serif; letter-spacing: 0.02em; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  h1 { font-family: 'Inter', sans-serif; font-weight: 700; letter-spacing: -0.01em; }
   .logo-img { display: block; height: 2.25rem; width: auto; }
   .view { display: none; }
   .view.active { display: block; }
@@ -64,16 +63,17 @@
      defecto del navegador — reemplaza cualquier focus:ring de Tailwind. */
   input:focus, select:focus, textarea:focus {
     outline: none;
-    border-color: #DB002E;
-    box-shadow: 0 0 0 3px rgba(219, 0, 46, 0.15);
+    border-color: #3B5BDB;
+    box-shadow: 0 0 0 3px rgba(59, 91, 219, 0.15);
   }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen">
 
 <div id="toast" class="fixed top-3 left-1/2 -translate-x-1/2 z-50 hidden px-4 py-2 rounded-lg shadow-lg text-white text-sm"></div>
-<div id="offline-banner" class="hidden fixed top-0 inset-x-0 z-40 bg-accent text-slate-900 text-xs font-medium text-center py-1.5 px-2">
-  📡 Sin conexión — lo que captures se guarda en este celular y se sube solo cuando regrese el internet.
+<div id="offline-banner" class="hidden fixed top-0 inset-x-0 z-40 bg-amber-100 text-amber-900 border-b border-amber-200 text-xs font-medium text-center py-1.5 px-2 flex items-center justify-center gap-1.5">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M1 9l2 2c4.5-4.5 11.5-4.5 16 0l2-2C14.9 2.9 7.1 2.9 1 9z"/><path d="M5 13l2 2c2.5-2.5 6.5-2.5 9 0l2-2c-3.9-3.9-9.1-3.9-13 0z"/><path d="M9 17l2 2 2-2c-1.1-1.1-2.9-1.1-4 0z"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+  <span id="offline-banner-text">Sin conexión — lo que captures se guarda en este celular y se sube solo cuando regrese el internet.</span>
 </div>
 
 <!-- ===================== LOGIN ===================== -->
@@ -153,7 +153,7 @@
 <div id="view-proyectos" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="proyectos-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="proyectos-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 class="text-lg font-bold text-slate-900">Proyectos</h1>
     </div>
   </header>
@@ -164,7 +164,7 @@
     </p>
 
     <button id="proyecto-vista-general-btn" data-id="" class="proyecto-item w-full text-left bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5 flex justify-between items-center transition mb-2">
-      <span class="font-medium text-slate-800">🌐 Vista general (todos los proyectos)</span>
+      <span class="font-medium text-slate-800">Vista general (todos los proyectos)</span>
       <span class="text-slate-400">→</span>
     </button>
 
@@ -184,7 +184,7 @@
 <div id="view-permisos" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="permisos-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="permisos-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 class="text-lg font-bold text-slate-900">Permisos</h1>
     </div>
   </header>
@@ -209,10 +209,12 @@
      pagado, restante por pagar, desglose por partida con avance de obra
      y el historial de sus pagos — NUNCA los gastos reales de la obra. -->
 <div id="view-presupuesto-cliente" class="view">
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
+  <header class="bg-brand sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="presupuesto-cliente-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
-      <h1 id="presupuesto-cliente-titulo" class="text-lg font-bold text-slate-900">Presupuesto</h1>
+      <button id="presupuesto-cliente-back-btn" class="text-slate-300 hover:text-white p-1 -ml-1">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <h1 id="presupuesto-cliente-titulo" class="text-lg font-bold text-white">Presupuesto</h1>
     </div>
   </header>
 
@@ -223,22 +225,22 @@
         <span id="pc-avance-general-texto" class="text-sm font-semibold text-slate-800">—</span>
       </div>
       <div class="w-full bg-slate-100 rounded-full h-2.5">
-        <div id="pc-avance-general-barra" class="h-2.5 rounded-full bg-indigo-500" style="width:0%"></div>
+        <div id="pc-avance-general-barra" class="h-2.5 rounded-full bg-accent" style="width:0%"></div>
       </div>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 text-center">
-        <p class="text-xs text-slate-500 mb-1">Presupuesto total</p>
-        <p id="pc-total-presupuesto" class="text-2xl font-display tracking-wide text-slate-900">$0</p>
+        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Presupuesto total</p>
+        <p id="pc-total-presupuesto" class="text-2xl font-display font-bold tracking-tight text-slate-900">$0</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 text-center">
-        <p class="text-xs text-slate-500 mb-1">Pagado</p>
-        <p id="pc-total-pagado" class="text-2xl font-display tracking-wide text-emerald-600">$0</p>
+        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Pagado</p>
+        <p id="pc-total-pagado" class="text-2xl font-display font-bold tracking-tight text-emerald-600">$0</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 text-center">
-        <p class="text-xs text-slate-500 mb-1">Restante por pagar</p>
-        <p id="pc-total-restante" class="text-2xl font-display tracking-wide">$0</p>
+        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Restante por pagar</p>
+        <p id="pc-total-restante" class="text-2xl font-display font-bold tracking-tight">$0</p>
       </div>
     </div>
 
@@ -272,13 +274,18 @@
 
 <!-- ===================== DASHBOARD ===================== -->
 <div id="view-dashboard" class="view">
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
-    <div class="max-w-3xl lg:max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
-      <div>
-        <img src="assets/logo.png" alt="ROMOR" class="logo-img" style="height:1.5rem" />
-        <p class="text-xs text-slate-500 mt-1">Hola, <span id="current-user-label" class="font-medium"></span> · <button id="change-user-btn" class="underline">cambiar</button><span id="link-proyectos"> · <button id="change-project-btn" class="underline">proyectos</button></span><span id="link-proveedores"> · <button id="open-proveedores-btn" class="underline">proveedores</button></span><span id="link-recordatorios"> · <button id="open-recordatorios-btn" class="underline">recordatorios</button></span><span id="link-permisos" class="hidden"> · <button id="open-permisos-btn" class="underline">permisos</button></span></p>
+  <header class="bg-brand sticky top-0 z-10">
+    <div class="max-w-3xl lg:max-w-6xl mx-auto px-4 py-3 flex items-start justify-between gap-2">
+      <div class="flex items-start gap-2.5 min-w-0">
+        <div class="w-8 h-8 rounded-lg bg-accent flex items-center justify-center text-white font-extrabold text-sm shrink-0 mt-0.5">R</div>
+        <div class="min-w-0">
+          <p class="text-white font-bold text-sm leading-tight">ROMOR</p>
+          <p class="text-xs text-slate-300 mt-1 leading-snug">Hola, <span id="current-user-label" class="font-medium text-slate-100"></span> · <button id="change-user-btn" class="underline decoration-slate-500 hover:text-white">cambiar</button><span id="link-proyectos"> · <button id="change-project-btn" class="underline decoration-slate-500 hover:text-white">proyectos</button></span><span id="link-proveedores"> · <button id="open-proveedores-btn" class="underline decoration-slate-500 hover:text-white">proveedores</button></span><span id="link-recordatorios"> · <button id="open-recordatorios-btn" class="underline decoration-slate-500 hover:text-white">recordatorios</button></span><span id="link-permisos" class="hidden"> · <button id="open-permisos-btn" class="underline decoration-slate-500 hover:text-white">permisos</button></span></p>
+        </div>
       </div>
-      <button id="logout-btn" class="text-sm text-slate-500 hover:text-slate-800">Salir</button>
+      <button id="logout-btn" class="text-slate-300 hover:text-white shrink-0 p-1" title="Salir">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
     </div>
   </header>
 
@@ -294,11 +301,11 @@
       <div id="recordatorios-card-wrap" class="lg:order-2 lg:sticky lg:top-20 mb-3 lg:mb-0">
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
           <div class="flex items-center justify-between mb-1.5">
-            <h2 class="text-sm font-semibold text-slate-700">📌 Recordatorios</h2>
+            <h2 class="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="text-accent flex-shrink-0"><path d="M12 2a6 6 0 00-6 6c0 3.5-1.5 5-2 6h16c-.5-1-2-2.5-2-6a6 6 0 00-6-6z"/><path d="M10 20a2 2 0 004 0"/></svg>Recordatorios</h2>
             <button id="recordatorios-ver-todos-btn" class="text-xs text-blue-600 underline shrink-0">Ver todos</button>
           </div>
           <div id="recordatorios-lista-card" class="space-y-1"></div>
-          <p id="recordatorios-vacio-card" class="text-sm text-slate-400 hidden">🎉 No tienes recordatorios pendientes.</p>
+          <p id="recordatorios-vacio-card" class="text-sm text-slate-400 hidden">No tienes recordatorios pendientes.</p>
           <button id="recordatorios-add-card-btn" type="button" class="mt-1.5 text-xs text-blue-600 underline">+ Agregar recordatorio</button>
         </div>
       </div>
@@ -307,7 +314,7 @@
     <!-- Filtro de proyecto (vista general por defecto) -->
     <div class="mb-3">
       <select id="filtro-proyecto" class="w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-medium bg-white">
-        <option value="">🌐 Todos los proyectos</option>
+        <option value="">Todos los proyectos</option>
       </select>
     </div>
 
@@ -326,16 +333,16 @@
     <!-- Resumen -->
     <div id="resumen-cards" class="grid grid-cols-3 gap-2 mb-4">
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-        <p class="text-xs text-slate-500">Entradas</p>
-        <p id="total-entradas" class="text-xl font-display tracking-wide text-slate-900">$0</p>
+        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 flex items-center gap-1"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="flex-shrink-0"><path d="M12 19V5M5 12l7-7 7 7"/></svg>Entradas</p>
+        <p id="total-entradas" class="text-xl font-display font-bold tracking-tight text-slate-900">$0</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-        <p class="text-xs text-slate-500">Gastos</p>
-        <p id="total-general" class="text-xl font-display tracking-wide text-slate-900">$0</p>
+        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 flex items-center gap-1"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="flex-shrink-0"><path d="M12 5v14M19 12l-7 7-7-7"/></svg>Gastos</p>
+        <p id="total-general" class="text-xl font-display font-bold tracking-tight text-slate-900">$0</p>
       </div>
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-        <p class="text-xs text-slate-500">Saldo</p>
-        <p id="total-saldo" class="text-xl font-display tracking-wide">$0</p>
+        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5 flex items-center gap-1"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" class="flex-shrink-0"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>Saldo</p>
+        <p id="total-saldo" class="text-xl font-display font-bold tracking-tight">$0</p>
         <p id="total-saldo-nota" class="text-[10px] text-slate-400 mt-0.5 hidden"></p>
       </div>
     </div>
@@ -343,9 +350,12 @@
     <!-- Tabs -->
     <div id="tabs-bar" class="relative mb-4">
       <button type="button" id="tabs-menu-toggle"
-        class="w-full flex items-center justify-between gap-2 rounded-lg py-2.5 px-4 text-sm font-medium bg-white border border-slate-300 text-slate-700">
-        <span id="tabs-menu-toggle-label">Gastos</span>
-        <span class="text-slate-400 text-xs">▾</span>
+        class="w-full flex items-center justify-between gap-2 rounded-lg py-2.5 px-3.5 text-sm font-semibold bg-white border border-slate-200 shadow-sm text-slate-800">
+        <span class="flex items-center gap-2.5 min-w-0">
+          <span class="w-7 h-7 rounded-md bg-accent-50 text-accent flex items-center justify-center shrink-0"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M8 2v4M16 2v4"/></svg></span>
+          <span id="tabs-menu-toggle-label" class="truncate">Gastos</span>
+        </span>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" class="text-slate-400 shrink-0"><path d="M6 9l6 6 6-6"/></svg>
       </button>
       <div id="tabs-menu-list"
         class="hidden absolute left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg z-20 divide-y divide-slate-100 overflow-hidden max-h-[70vh] overflow-y-auto">
@@ -455,8 +465,8 @@
       <p class="text-xs text-slate-500 mb-3">Gastos pagados a crédito (con el proveedor, o con una línea de crédito general de la obra) — con abonos parciales hasta saldarlos.</p>
 
       <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-3">
-        <p class="text-xs text-slate-500">Total adeudado</p>
-        <p id="creditos-total-adeudado" class="text-2xl font-display tracking-wide text-red-600">$0</p>
+        <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Total adeudado</p>
+        <p id="creditos-total-adeudado" class="text-2xl font-display font-bold tracking-tight text-red-600">$0</p>
       </div>
 
       <div class="grid grid-cols-3 gap-2 mb-3">
@@ -496,8 +506,8 @@
         <h2 class="text-sm font-semibold text-slate-700 mb-1">Préstamos entre proyectos</h2>
         <p class="text-xs text-slate-500 mb-3">Gastos pagados con dinero de otro proyecto — mientras no se regresen, el Saldo del dashboard de ambos proyectos se ajusta solo.</p>
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-4 mb-3">
-          <p class="text-xs text-slate-500">Total prestado pendiente de regresar</p>
-          <p id="prestamos-total-pendiente" class="text-2xl font-display tracking-wide text-red-600">$0</p>
+          <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">Total prestado pendiente de regresar</p>
+          <p id="prestamos-total-pendiente" class="text-2xl font-display font-bold tracking-tight text-red-600">$0</p>
         </div>
         <div id="lista-prestamos" class="space-y-2"></div>
         <p id="lista-prestamos-vacia" class="text-center text-slate-400 text-sm py-8 hidden">No hay préstamos entre proyectos.</p>
@@ -514,21 +524,22 @@
       <div class="flex justify-end mb-3">
         <button type="button" id="presupuesto-presentar-btn"
           class="flex items-center gap-1.5 rounded-lg py-2 px-3 text-sm font-medium bg-white border border-slate-300 text-slate-700 hover:bg-slate-50">
-          📱 Vista para el cliente
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" class="text-accent flex-shrink-0"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          Vista para el cliente
         </button>
       </div>
       <div class="grid grid-cols-3 gap-2 mb-4">
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-          <p class="text-[11px] text-slate-500">Presupuestado</p>
-          <p id="presupuesto-total-presupuestado" class="text-lg font-display tracking-wide text-slate-900">$0</p>
+          <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Presupuestado</p>
+          <p id="presupuesto-total-presupuestado" class="text-lg font-display font-bold tracking-tight text-slate-900">$0</p>
         </div>
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-          <p class="text-[11px] text-slate-500">Gastado</p>
-          <p id="presupuesto-total-gastado" class="text-lg font-display tracking-wide text-slate-900">$0</p>
+          <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Gastado</p>
+          <p id="presupuesto-total-gastado" class="text-lg font-display font-bold tracking-tight text-slate-900">$0</p>
         </div>
         <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
-          <p class="text-[11px] text-slate-500">Restante</p>
-          <p id="presupuesto-total-restante" class="text-lg font-display tracking-wide">$0</p>
+          <p class="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1">Restante</p>
+          <p id="presupuesto-total-restante" class="text-lg font-display font-bold tracking-tight">$0</p>
         </div>
       </div>
 
@@ -591,7 +602,7 @@
 
       <!-- Hitos: fechas clave marcadas aparte de las tareas del día a día. -->
       <div id="plan-hitos-wrap" class="hidden mb-4">
-        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5">🏁 Hitos</h2>
+        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1.5 flex items-center gap-1"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0"><path d="M5 3v18"/><path d="M5 4h11l-2 4 2 4H5"/></svg>Hitos</h2>
         <div id="plan-hitos" class="space-y-2"></div>
       </div>
 
@@ -669,13 +680,13 @@
         <input id="acabado-zona" type="text" placeholder="Zona (ej. Recámara principal, Fachada, Cocina)"
           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
         <select id="acabado-categoria" class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white">
-          <option value="pintura">🎨 Pintura</option>
-          <option value="piso">🧱 Piso</option>
-          <option value="azulejo">◻️ Azulejo</option>
-          <option value="herreria">🔩 Herrería</option>
-          <option value="carpinteria">🪵 Carpintería</option>
-          <option value="canceleria">🚪 Cancelería</option>
-          <option value="otro">✨ Otro</option>
+          <option value="pintura">Pintura</option>
+          <option value="piso">Piso</option>
+          <option value="azulejo">Azulejo</option>
+          <option value="herreria">Herrería</option>
+          <option value="carpinteria">Carpintería</option>
+          <option value="canceleria">Cancelería</option>
+          <option value="otro">Otro</option>
         </select>
         <input id="acabado-categoria-otro" type="text" placeholder="¿Qué tipo de acabado es?"
           class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm hidden" />
@@ -701,8 +712,8 @@
   </main>
 
   <button id="fab-add"
-    class="fixed bottom-5 right-5 bg-brand text-white rounded-full w-14 h-14 shadow-xl flex items-center justify-center text-2xl hover:bg-brand-dark transition">
-    +
+    class="fixed bottom-5 right-5 bg-accent text-white rounded-full w-14 h-14 shadow-xl flex items-center justify-center hover:bg-accent-dark transition">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
   </button>
 </div>
 
@@ -710,7 +721,7 @@
 <div id="view-form-entrada" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="entrada-form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="entrada-form-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 id="entrada-form-title" class="text-lg font-bold text-slate-900">Nueva entrada</h1>
     </div>
   </header>
@@ -781,7 +792,7 @@
 <div id="view-form" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="form-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 id="form-title" class="text-lg font-bold text-slate-900">Nuevo gasto</h1>
     </div>
   </header>
@@ -938,7 +949,7 @@
 <div id="view-proveedores" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="proveedores-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="proveedores-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 class="text-lg font-bold text-slate-900">Proveedores</h1>
     </div>
   </header>
@@ -1005,7 +1016,7 @@
 <div id="view-recordatorios" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="recordatorios-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="recordatorios-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 class="text-lg font-bold text-slate-900">Recordatorios</h1>
     </div>
   </header>
@@ -1070,7 +1081,7 @@
 <div id="view-documento-form" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="documento-form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="documento-form-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 class="text-lg font-bold text-slate-900">Subir documento</h1>
     </div>
   </header>
@@ -1114,7 +1125,7 @@
 <div id="view-bitacora-form" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="bitacora-form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="bitacora-form-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 id="bitacora-form-title" class="text-lg font-bold text-slate-900">Nuevo avance</h1>
     </div>
   </header>
@@ -1157,7 +1168,7 @@
 <div id="view-form-plan" class="view">
   <header class="bg-white border-b border-slate-200 sticky top-0 z-10">
     <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
-      <button id="plan-form-back-btn" class="text-slate-500 hover:text-slate-800 text-xl">←</button>
+      <button id="plan-form-back-btn" class="text-slate-500 hover:text-slate-800 p-1 -ml-1"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <h1 id="plan-form-title" class="text-lg font-bold text-slate-900">Agregar pendiente</h1>
     </div>
   </header>

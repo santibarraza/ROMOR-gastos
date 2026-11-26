@@ -277,6 +277,59 @@ confirmación en unos segundos, y ver la nueva entrada en la pestaña "Bitácora
 
 ---
 
+## 6.7 Actualización: Acabados, menú de pestañas, vista para el cliente y corrección de Riesgos
+
+Varias mejoras en un solo paquete:
+
+- **Pestaña "Acabados" nueva:** en cada proyecto puedes capturar qué acabados se
+  eligieron (pintura, piso, azulejo, herrería, carpintería, cancelería, u "otro" con
+  texto libre) — con zona, marca/color/modelo, proveedor y notas. Todo el equipo puede
+  agregar y editar. Requiere correr `sql/migration_v17_acabados.sql` en Supabase (SQL
+  Editor → New query → pegar todo → Run).
+- **Las pestañas del dashboard ahora son un menú desplegable** en vez de una fila de
+  botones — más ordenado ahora que son 9. Se abre tocando la barra que muestra la
+  pestaña activa, y se cierra solo al elegir una o tocar fuera.
+- **Nueva "Vista para el cliente" en Presupuesto:** un botón abre una pantalla de
+  pantalla completa pensada para mostrarle el presupuesto al cliente — presupuesto
+  total, cuánto ha pagado, cuánto le falta por pagar, el desglose por partida con su
+  avance de obra, y el historial de pagos. **Nunca muestra los gastos** (se probó a
+  propósito para confirmar que un gasto de prueba nunca aparece ahí).
+- **Corrección de un error al guardar riesgos** ("`violates check constraint
+  riesgos_impacto_check`"): la base de datos tenía una regla desactualizada para los
+  valores de impacto. Corre `sql/migration_v18_fix_riesgos_check.sql` en Supabase si
+  te llegaste a topar con ese error.
+- De paso se corrigió un detalle en la pestaña de Riesgos: si entrabas a esa pestaña
+  por primera vez sin antes haber entrado a otra, el selector de proyecto/responsable
+  podía quedar vacío y un riesgo nuevo se guardaba sin proyecto asignado.
+
+---
+
+## 6.8 Actualización: rediseño visual completo (look profesional, azul marino)
+
+A petición de Santiago ("no me está gustando el diseño, quiero que se vea más
+profesional"), se rediseñó la apariencia de toda la app, sin tocar ninguna función:
+
+- **Paleta nueva:** azul marino (`#1B2A4A`) como color principal (encabezados) y un
+  azul más vivo (`#3B5BDB`) como acento para botones de ícono, enlaces y elementos
+  interactivos — ya no sigue el rojo/naranja del logo (fue decisión explícita de
+  Santiago, a propósito, después de ver 3 opciones de diseño).
+- **Tipografía Inter** en toda la app, en vez de la mezcla anterior de Roboto + Bebas
+  Neue.
+- **Se quitaron los emojis** usados como íconos (🗑️ 📌 🎨 🏁 👷 💳 etc.) y se
+  reemplazaron por íconos SVG dibujados a mano o, cuando el ícono no era esencial,
+  simplemente por texto limpio con el mismo color de distintivo (badge) que ya tenían.
+  Los emoji en los `<option>` de formularios también se quitaron (no se pueden mostrar
+  bien dentro de un `<select>`).
+- **Encabezado del dashboard y de la vista para el cliente** ahora en azul marino, con
+  la marca "R" en acento azul.
+- **Tarjetas de resumen** (Entradas/Gastos/Saldo, Presupuesto, Créditos, Préstamos,
+  vista para el cliente) con un estilo consistente de etiqueta pequeña en mayúsculas +
+  número grande.
+- No requirió ninguna migración de SQL ni cambios en la base de datos — es puramente
+  visual (`index.html`, `js/main.js`, `manifest.json`).
+
+---
+
 ## 7. Cómo hacer cambios después
 
 - **Agregar categorías o proveedores nuevos:** en Supabase, ve a **Table Editor** → tabla `categorias` o `proveedores` → **Insert row**. No hace falta tocar código.
@@ -303,4 +356,6 @@ sql/schema.sql                              Esquema completo — solo para un pr
 sql/migration_v2_proyectos_entradas.sql     Migración — para un proyecto que ya tenías funcionando (ver 6.1)
 sql/migration_v3_documentos_bitacora.sql    Migración — documentos, bitácora y proveedores directorio (ver 6.5)
 sql/migration_v4_whatsapp_bitacora.sql      Migración — teléfono de integrantes y buzón de fotos de WhatsApp (ver 6.6)
+sql/migration_v17_acabados.sql              Migración — tabla de acabados (ver 6.7)
+sql/migration_v18_fix_riesgos_check.sql     Migración — corrige las reglas (check constraints) de la tabla de riesgos (ver 6.7)
 ```
